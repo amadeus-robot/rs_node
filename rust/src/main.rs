@@ -7,4 +7,6 @@ async fn main() {
     let app = AmaApp::new();
     app.start().await;
     app.wait_node_inited(None);
+
+    
 }
