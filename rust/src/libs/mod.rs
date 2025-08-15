@@ -1,0 +1,89 @@
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+use crate::*;
+use tokio::{task, time::sleep};
+
+pub struct AmaApp {
+    pub node_inited: Arc<AtomicBool>,
+}
+
+impl AmaApp {
+    pub fn new() -> Self {
+        Self {
+            node_inited: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    async fn autoupdate_task() {
+        // Placeholder for auto-update logic
+        println!("Running auto-update...");
+    }
+
+    async fn spawn_child_tasks(&self) {
+        // Examples of child tasks
+        task::spawn(async {
+            // ComputorGen::start_link();
+            println!("ComputorGen started");
+        });
+
+        task::spawn(async {
+            // LoggerGen::start_link();
+            println!("LoggerGen started");
+        });
+
+        task::spawn(async {
+            // FabricGen::start_link();
+            println!("FabricGen started");
+        });
+
+        // You can spawn more tasks dynamically
+    }
+
+    pub async fn start(&self) {
+        // 1. Startup delay
+        sleep(Duration::from_millis(300)).await;
+
+        if AMACONFIG.autoupdate {
+            println!("🟢 Auto-update enabled");
+            // spawn auto-update task
+            task::spawn(Self::autoupdate_task());
+        }
+
+        println!("Initing Fabric..");
+        // Fabric::init();
+
+        println!("Initing TXPool..");
+        // TXPool::init();
+
+        if !AMACONFIG.offline {
+            // Check snapshot logic
+            // FabricSnapshot::download_latest();
+        } else {
+            // Offline init placeholder
+            // Consensus.apply_entry(...)
+        }
+
+        // Spawn supervised tasks
+        self.spawn_child_tasks().await;
+    }
+
+    pub fn wait_node_inited(&self, timeout_ms: Option<u64>) -> bool {
+        let timeout = timeout_ms.unwrap_or(10 * 60_000); // default 10 min
+        let start = Instant::now();
+
+        while !self.node_inited.load(Ordering::SeqCst) {
+            if start.elapsed() > Duration::from_millis(timeout) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(333));
+        }
+
+        true
+    }
+}
