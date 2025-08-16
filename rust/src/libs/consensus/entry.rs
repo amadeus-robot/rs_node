@@ -1,4 +1,5 @@
 use blake3;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::*;
@@ -32,14 +33,22 @@ mod tx {
 
 // Placeholder Consensus module
 mod consensus {
-    pub fn trainers_for_height(_height: u64) -> Vec<Vec<u8>> { vec![] }
-    pub fn chain_epoch() -> u32 { 0 }
-    pub fn chain_nonce(_signer: &[u8]) -> Option<u64> { Some(0) }
-    pub fn chain_balance(_signer: &[u8]) -> i64 { 1000 }
+    pub fn trainers_for_height(_height: u64) -> Vec<Vec<u8>> {
+        vec![]
+    }
+    pub fn chain_epoch() -> u32 {
+        0
+    }
+    pub fn chain_nonce(_signer: &[u8]) -> Option<u64> {
+        Some(0)
+    }
+    pub fn chain_balance(_signer: &[u8]) -> i64 {
+        1000
+    }
 }
 
 // Entry header and entry structs
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntryHeader {
     pub slot: u64,
     pub height: u64,
@@ -51,7 +60,7 @@ pub struct EntryHeader {
     pub txs_hash: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
     pub header_unpacked: EntryHeader,
     pub txs: Vec<Vec<u8>>,
@@ -92,17 +101,25 @@ impl Entry {
     }
 
     pub fn validate_signature(&self) -> Result<(), &'static str> {
-        let hash = blake3::hash(&bincode::serialize(&self.header_unpacked).unwrap()).as_bytes().to_vec();
+        let hash = blake3::hash(&bincode::serialize(&self.header_unpacked).unwrap())
+            .as_bytes()
+            .to_vec();
         if let Some(mask) = &self.mask {
             // Placeholder for masked BLS validation
             let trainers = consensus::trainers_for_height(self.header_unpacked.height);
             let _trainers_signed = trainers; // unmask logic
-            let agg_pk = bls::aggregate_public_keys(_trainers_signed.iter().map(|x| x.as_slice()).collect());
+            let agg_pk =
+                bls::aggregate_public_keys(_trainers_signed.iter().map(|x| x.as_slice()).collect());
             if !bls::verify(&agg_pk, &self.signature, &hash, b"BLS12AggSig_dst_entry") {
                 return Err("invalid_signature");
             }
         } else {
-            if !bls::verify(&self.header_unpacked.signer, &self.signature, &hash, b"BLS12AggSig_dst_entry") {
+            if !bls::verify(
+                &self.header_unpacked.signer,
+                &self.signature,
+                &hash,
+                b"BLS12AggSig_dst_entry",
+            ) {
                 return Err("invalid_signature");
             }
         }
@@ -115,7 +132,9 @@ impl Entry {
         if eh.txs_hash != blake3::hash(&self.txs.concat()).as_bytes() {
             return Err("txs_hash_invalid");
         }
-        if self.txs.len() > 100 { return Err("too_many_txs"); }
+        if self.txs.len() > 100 {
+            return Err("too_many_txs");
+        }
 
         for tx in &self.txs {
             tx::validate(tx, self.mask.is_some())?;
@@ -127,11 +146,21 @@ impl Entry {
         let ceh = &cur_entry.header_unpacked;
         let neh = &next_entry.header_unpacked;
 
-        if ceh.slot != neh.prev_slot as u64 { return Err("invalid_slot"); }
-        if ceh.height != neh.height - 1 { return Err("invalid_height"); }
-        if cur_entry.hash != neh.prev_hash { return Err("invalid_hash"); }
-        if blake3::hash(&ceh.dr).as_bytes().to_vec() != neh.dr { return Err("invalid_dr"); }
-        if !bls::verify(&neh.signer, &neh.vr, &ceh.vr, b"BLS12AggSig_dst_vrf") { return Err("invalid_vr"); }
+        if ceh.slot != neh.prev_slot as u64 {
+            return Err("invalid_slot");
+        }
+        if ceh.height != neh.height - 1 {
+            return Err("invalid_height");
+        }
+        if cur_entry.hash != neh.prev_hash {
+            return Err("invalid_hash");
+        }
+        if blake3::hash(&ceh.dr).as_bytes().to_vec() != neh.dr {
+            return Err("invalid_dr");
+        }
+        if !bls::verify(&neh.signer, &neh.vr, &ceh.vr, b"BLS12AggSig_dst_vrf") {
+            return Err("invalid_vr");
+        }
 
         let mut state: HashMap<(u8, Vec<u8>), u64> = HashMap::new();
         for tx in &next_entry.txs {
@@ -143,7 +172,9 @@ impl Entry {
     }
 
     pub fn build_next(cur_entry: &Entry, slot: u64, pk: &[u8], sk: &[u8]) -> Entry {
-        let dr = blake3::hash(&cur_entry.header_unpacked.dr).as_bytes().to_vec();
+        let dr = blake3::hash(&cur_entry.header_unpacked.dr)
+            .as_bytes()
+            .to_vec();
         let vr = bls::sign(sk, &cur_entry.header_unpacked.vr, b"BLS12AggSig_dst_vrf");
 
         let header = EntryHeader {

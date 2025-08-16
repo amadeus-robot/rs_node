@@ -12,9 +12,11 @@ use {
 
 pub mod consensus;
 pub mod http;
+pub mod misc;
 pub mod node;
 pub use consensus::*;
 pub use http::*;
+pub use misc::*;
 pub use node::*;
 
 pub struct AmaApp {

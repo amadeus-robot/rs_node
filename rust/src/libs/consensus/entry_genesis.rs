@@ -107,39 +107,39 @@ impl EntryGenesis {
         &self.genesis_entry
     }
 
-    pub fn generate(&self) {
-        let config = CONFIG.get().expect("Config not initialized");
-        let pk = &config.trainer_pk;
-        let sk = &config.trainer_sk;
+    // pub fn generate(&self) {
+    //     let config = CONFIG.get().expect("Config not initialized");
+    //     let pk = &config.trainer_pk;
+    //     let sk = &config.trainer_sk;
 
-        let entropy_seed = b"January 27, 2025\n\nTech stocks tank as a Chinese competitor threatens to upend the AI frenzy; Nvidia sinks nearly 17%";
-        let dr = Blake3::hash(entropy_seed);
+    //     let entropy_seed = b"January 27, 2025\n\nTech stocks tank as a Chinese competitor threatens to upend the AI frenzy; Nvidia sinks nearly 17%";
+    //     let dr = Blake3::hash(entropy_seed);
 
-        // VRF: simplified placeholder, use actual BLS signing
-        let vr_input = [dr.as_bytes(), dr.as_bytes(), dr.as_bytes()].concat();
-        let vr = bls_sign(sk, &vr_input);
+    //     // VRF: simplified placeholder, use actual BLS signing
+    //     let vr_input = [dr.as_bytes(), dr.as_bytes(), dr.as_bytes()].concat();
+    //     let vr = bls_sign(sk, &vr_input);
 
-        let entry_header = EntryHeader {
-            slot: 0,
-            height: 0,
-            prev_slot: -1,
-            prev_hash: vec![],
-            dr: dr.as_bytes().to_vec(),
-            vr,
-            signer: pk.clone(),
-            txs_hash: vec![],
-        };
+    //     let entry_header = EntryHeader {
+    //         slot: 0,
+    //         height: 0,
+    //         prev_slot: -1,
+    //         prev_hash: vec![],
+    //         dr: dr.as_bytes().to_vec(),
+    //         vr,
+    //         signer: pk.clone(),
+    //         txs_hash: vec![],
+    //     };
 
-        let entry = Entry {
-            header_unpacked: entry_header,
-            txs: vec![],
-            hash: vec![],
-            signature: vec![],
-        };
+    //     let entry = Entry {
+    //         header_unpacked: entry_header,
+    //         txs: vec![],
+    //         hash: vec![],
+    //         signature: vec![],
+    //     };
 
-        // TODO: call exit and mutations, produce attestation, PoP, etc.
-        println!("Generated entry: {:?}", entry);
-    }
+    //     // TODO: call exit and mutations, produce attestation, PoP, etc.
+    //     println!("Generated entry: {:?}", entry);
+    // }
 }
 
 // Placeholder function for BLS signing
