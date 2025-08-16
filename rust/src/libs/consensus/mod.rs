@@ -1,2 +1,16 @@
+pub mod attestation;
+pub mod bls_aggsig;
+pub mod consensus;
+pub mod consensus_kv;
+pub mod consensus_weight;
+pub mod entry;
+pub mod entry_genesis;
 pub mod tx;
+pub use attestation::*;
+pub use bls_aggsig::*;
+pub use consensus::*;
+pub use consensus_kv::*;
+pub use consensus_weight::*;
+pub use entry::*;
+pub use entry_genesis::*;
 pub use tx::*;
