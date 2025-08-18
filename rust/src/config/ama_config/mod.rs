@@ -3,6 +3,14 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{net::Ipv4Addr, path::PathBuf};
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")] // maps "default", "trainer" from TOML
+pub enum ComputorType {
+    Trainer,
+    Default,
+    None,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct AmaConfig {
     pub version_3b: [u8; 3],
@@ -20,10 +28,12 @@ pub struct AmaConfig {
     pub othernodes: Vec<String>,
     pub trustfactor: f64,
 
+    pub trainer_pk: Vec<u8>,
+    pub trainer_sk: Vec<u8>,
     // Optional flags
     pub archival_node: bool,
     pub autoupdate: bool,
-    pub computor_type: String,
+    pub computor_type: ComputorType,
     pub snapshot_height: u64,
 }
 

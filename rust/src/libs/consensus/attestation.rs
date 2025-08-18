@@ -6,8 +6,8 @@ use crate::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Attestation {
-    pub entry_hash: [u8; 32],
-    pub mutations_hash: [u8; 32],
+    pub entry_hash: Vec<u8>,
+    pub mutations_hash: Vec<u8>,
     pub signer: Vec<u8>,
     pub signature: Vec<u8>,
 }

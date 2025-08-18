@@ -31,8 +31,8 @@ trustfactor = 0.8                   # override via TRUSTFACTOR env
 
 # # Trainer keys (generated at runtime)
 # trainer_pk_b58 = ""
-# trainer_pk = ""
-# trainer_sk = ""
+trainer_pk = []
+trainer_sk = []
 # trainer_pop = ""
 
 # Optional flags

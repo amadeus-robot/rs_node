@@ -65,14 +65,22 @@ impl AmaApp {
             task::spawn(Self::autoupdate_task());
         }
 
-        println!("Initing Fabric..");
-        // Fabric::init();
+        let _ = Fabric::init();
 
-        println!("Initing TXPool..");
-        // TXPool::init();
+        let _ = TXPool::init();
 
         if !AMACONFIG.offline {
+            let rooted_tip_raw_height = Fabric::rooted_tip_height();
+
+            if let Some(rooted_tip_height) = rooted_tip_raw_height {
+                if rooted_tip_height < AMACONFIG.snapshot_height {
+                    Fabric::close();
+
+                    Fabric::init();
+                }
+            };
             // Check snapshot logic
+            Fabric::close();
             // FabricSnapshot::download_latest();
         } else {
             // Offline init placeholder

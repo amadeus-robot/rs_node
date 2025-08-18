@@ -1,86 +1,133 @@
-use std::sync::{Arc, Mutex, mpsc};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 pub mod computor_gen_type;
-use chrono::Utc;
 pub use computor_gen_type::*;
+use tokio::time::sleep;
 
-// pub struct ComputorGen {
-//     pub state: Arc<Mutex<ComputorState>>,
-//     pub tx: mpsc::Sender<ComputorMsg>,
-// }
+use crate::*;
 
-// impl ComputorGen {
-//     fn new(tx: mpsc::Sender<ComputorMsg>, state: Arc<Mutex<ComputorState>>) -> Self {
-//         Self { state, tx }
-//     }
+struct ComputorGen {
+    state: Arc<Mutex<ComputorState>>,
+}
 
-//     async fn handle_message(&self, msg: ComputorMsg) {
-//         match msg {
-//             ComputorMsg::Tick => {
-//                 let mut state = self.state.lock().await;
-//                 if !state.enabled {
-//                     return;
-//                 }
-//                 if !fabric_sync_attest_gen::is_quorum_in_epoch() {
-//                     println!("🔴 cannot compute: out_of_sync");
-//                 } else {
-//                     self.tick(&mut state).await;
-//                 }
-//             }
-//             ComputorMsg::Start(ctype) => {
-//                 let mut state = self.state.lock().await;
-//                 state.enabled = true;
-//                 state.ctype = ctype;
-//             }
-//             ComputorMsg::Stop => {
-//                 let mut state = self.state.lock().await;
-//                 state.enabled = false;
-//             }
-//             ComputorMsg::SetEmissionAddress(to_addr) => {
-//                 let sk = "trainer_sk_from_config";
-//                 let tx_bin = tx::build(sk, "Epoch", "set_emission_address", vec![to_addr]);
-//                 txpool::insert(&tx_bin);
-//                 node_gen::broadcast("txpool", "trainers", vec![tx_bin]);
-//             }
-//         }
-//     }
+impl ComputorGen {
+    fn new() -> Self {
+        let state = ComputorState {
+            enabled: false,
+            computor_type: ComputorType::None,
+        };
+        Self {
+            state: Arc::new(Mutex::new(state)),
+        }
+    }
 
-//     async fn tick(&self, state: &mut ComputorState) {
-//         println!("computor running {}", Utc::now());
-//         let pk = "trainer_pk_from_config";
-//         let pop = "trainer_pop_from_config";
+    async fn start(&self, ctype: Option<ComputorType>) {
+        let mut state = self.state.lock().unwrap();
+        state.enabled = true;
+        state.computor_type = ctype.unwrap_or(ComputorType::None);
+    }
 
-//         let coins = consensus::chain_balance(pk);
-//         let epoch = consensus::chain_epoch();
-//         let has_exec_coins = coins >= bic_coin::to_cents(100);
+    async fn stop(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.enabled = false;
+    }
 
-//         let sol = if (state.ctype.as_deref() == Some("trainer") && !has_exec_coins)
-//             || state.ctype.is_none()
-//         {
-//             upow::compute_for(
-//                 epoch,
-//                 "entry_signer",
-//                 "entry_pop",
-//                 pk,
-//                 rand::random::<[u8; 96]>().to_vec(),
-//                 100,
-//             )
-//         } else {
-//             upow::compute_for(epoch, pk, pop, pk, rand::random::<[u8; 96]>().to_vec(), 100)
-//         };
+    async fn init(&self, config_computor_type: ComputorType) {
+        // Schedule the tick loop
+        let state_clone = self.state.clone();
+        tokio::spawn(async move {
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                // Here you can call self.tick(&mut state) or similar
+                let state = state_clone.lock().unwrap();
+                println!("tick! state: {:?}", *state);
+            }
+        });
 
-//         if let Some(sol) = sol {
-//             if state.ctype.as_deref() == Some("trainer") && !has_exec_coins {
-//                 println!("🔢 tensor matmul complete! broadcasting sol..");
-//                 node_gen::broadcast("sol", "trainers", vec![sol]);
-//             } else {
-//                 let sk = "trainer_sk_from_config";
-//                 let tx_bin = tx::build(sk, "Epoch", "submit_sol", vec![sol]);
-//                 let hash = tx::unpack(&tx_bin);
-//                 println!("🔢 tensor matmul complete! tx {}", hash);
-//                 txpool::insert(&tx_bin);
-//                 node_gen::broadcast("txpool", "trainers", vec![tx_bin]);
-//             }
-//         }
-//     }
-// }
+        // Start computor based on config
+        match config_computor_type {
+            ComputorType::Trainer => self.start(Some(ComputorType::Trainer)).await,
+            ComputorType::Default => self.start(None).await,
+            _ => {}
+        }
+    }
+
+    // async fn tick_loop(&self) {
+    //     loop {
+    //         sleep(Duration::from_secs(1)).await;
+    //         let mut state = self.state.lock().unwrap();
+    //         if !state.enabled {
+    //             continue;
+    //         }
+
+    //         if !FabricSyncAttestGen::is_quorum_in_epoch().await {
+    //             println!("🔴 cannot compute: out_of_sync");
+    //             continue;
+    //         }
+
+    //         self.tick(&mut state).await;
+    //     }
+    // }
+
+    // async fn tick(&self, state: &mut ComputorState) {
+    //     println!("computor running {}", Utc::now());
+
+    //     let pk = AppConfig::trainer_pk();
+    //     let pop = AppConfig::trainer_pop();
+
+    //     let coins = Consensus::chain_balance(&pk).await;
+    //     let epoch = Consensus::chain_epoch().await;
+    //     let has_exec_coins = coins >= BIC::Coin::to_cents(100);
+
+    //     match state.computor_type {
+    //         ComputorType::Trainer
+    //             if !has_exec_coins || state.computor_type == ComputorType::None =>
+    //         {
+    //             if let Some(sol) = UPOW::compute_for(
+    //                 epoch,
+    //                 EntryGenesis::signer(),
+    //                 EntryGenesis::pop(),
+    //                 &pk,
+    //                 UPOW::rand_bytes(96),
+    //                 100,
+    //             )
+    //             .await
+    //             {
+    //                 println!("🔢 tensor matmul complete! broadcasting sol..");
+    //                 NodeGen::broadcast("sol", "trainers", &[sol]).await;
+    //             }
+    //         }
+    //         _ => {
+    //             if let Some(sol) =
+    //                 UPOW::compute_for(epoch, &pk, &pop, &pk, UPOW::rand_bytes(96), 100).await
+    //             {
+    //                 let sk = AppConfig::trainer_sk();
+    //                 let packed_tx = TX::build(&sk, "Epoch", "submit_sol", &[sol.clone()]).await;
+    //                 println!(
+    //                     "🔢 tensor matmul complete! tx {}",
+    //                     Base58::encode(&packed_tx.hash)
+    //                 );
+
+    //                 TXPool::insert(packed_tx.clone()).await;
+    //                 NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]).await;
+    //             }
+    //         }
+    //     }
+    // }
+
+    // async fn set_emission_address(&self, to_address: &str) {
+    //     let sk = AppConfig::trainer_sk();
+    //     let packed_tx = TX::build(
+    //         &sk,
+    //         "Epoch",
+    //         "set_emission_address",
+    //         &[to_address.to_string()],
+    //     )
+    //     .await;
+    //     TXPool::insert(packed_tx.clone()).await;
+    //     NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]).await;
+    // }
+}

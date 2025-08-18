@@ -62,10 +62,10 @@ pub struct EntryHeader {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
+    pub signature: Vec<u8>,
+    pub hash: Vec<u8>,
     pub header_unpacked: EntryHeader,
     pub txs: Vec<Vec<u8>>,
-    pub hash: Vec<u8>,
-    pub signature: Vec<u8>,
     pub mask: Option<Vec<u8>>, // optional mask
 }
 
