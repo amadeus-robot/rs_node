@@ -74,9 +74,9 @@ impl AmaApp {
 
             if let Some(rooted_tip_height) = rooted_tip_raw_height {
                 if rooted_tip_height < AMACONFIG.snapshot_height {
-                    Fabric::close();
+                    let _ = Fabric::init();
 
-                    Fabric::init();
+                    Fabric::close();
                 }
             };
             // Check snapshot logic

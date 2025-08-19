@@ -1,5 +1,8 @@
 use blake3::Hasher;
-use blst::{min_pk::{SecretKey, Signature}, BLS12_381_G1};
+use blst::{
+    BLS12_381_G1,
+    min_pk::{SecretKey, Signature},
+};
 use std::sync::OnceLock;
 
 use crate::*;
@@ -134,6 +137,9 @@ Tech stocks tank as a Chinese competitor threatens to upend the AI frenzy; Nvidi
         dr_concat.extend_from_slice(&dr);
         dr_concat.extend_from_slice(&dr);
 
+        let sk = SecretKey::from_bytes(trainer_sk).unwrap();
+
+        sk.sign(&dr_concat, &BLS12AggSig::DST_VRF, &[]);
         // vr = BlsEx.sign!(sk, dr<>dr<>dr, BLS12AggSig.dst_vrf())
     }
 
