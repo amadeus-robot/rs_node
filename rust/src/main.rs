@@ -6,7 +6,6 @@ async fn main() {
 
     let app = AmaApp::new();
 
-    println!("HERERERER");
     app.start().await;
     app.wait_node_inited(None);
 

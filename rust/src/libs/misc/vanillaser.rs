@@ -66,7 +66,7 @@ impl VanillaSer {
         }
     }
 
-    fn decode(binary: &[u8]) -> Result<(Term, &[u8]), String> {
+    pub fn decode(binary: &[u8]) -> Result<(Term, &[u8]), String> {
         if binary.is_empty() {
             return Err("Empty input".into());
         }

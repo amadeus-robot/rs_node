@@ -81,10 +81,10 @@ impl AmaApp {
             };
             // Check snapshot logic
             Fabric::close();
-            // FabricSnapshot::download_latest();
+            let _ = FabricSnapshot::download_latest().await;
         } else {
             // Offline init placeholder
-            // Consensus.apply_entry(...)
+            //~ Consensus.apply_entry(...);          //  WORKING PART
         }
 
         // Spawn supervised tasks

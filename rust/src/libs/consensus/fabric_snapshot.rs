@@ -1,3 +1,12 @@
+use {
+    reqwest::Client,
+    std::{
+        fs::{self, File},
+        path::Path,
+    },
+    zip::ZipArchive,
+};
+
 use crate::*;
 
 pub struct FabricSnapshot {}
@@ -72,26 +81,40 @@ impl FabricSnapshot {
     //     }
     // }
 
-    // pub fn download_latest(height: u64) {
-    //     let padded = format!("{:012}", height);
-    //     println!("quick-syncing chain snapshot height {}..", height);
-    //     let url = format!("https://snapshots.amadeus.bot/{}.zip", padded);
+    pub async fn download_latest() -> Result<(), Box<dyn std::error::Error>> {
+        let height: u64 = AMACONFIG.snapshot_height;
+        let padded = format!("{:012}", height);
+        println!(
+            "quick-syncing chain snapshot height {}.. this can take a while",
+            height
+        );
 
-    //     let cwd_dir = Path::new("/tmp/updates_tmp/");
-    //     fs::create_dir_all(cwd_dir).unwrap();
+        let url: String = format!("https://snapshots.amadeus.bot/{}.zip", padded);
 
-    //     let zip_path = cwd_dir.join(format!("{}.zip", padded));
-    //     let resp = reqwest_blocking::get(&url).unwrap().bytes().unwrap();
-    //     fs::write(&zip_path, &resp).unwrap();
-    //     println!("quick-sync download complete. Extracting..");
+        println!("{}" , url);
+        let work_folder = AMACONFIG.work_folder.clone();
+        let cwd_dir = Path::new(&work_folder).join("updates_tmp");
+        std::fs::create_dir_all(&cwd_dir)?;
 
-    //     let file = File::open(&zip_path).unwrap();
-    //     let mut archive = ZipArchive::new(file).unwrap();
-    //     archive.extract("/var/work/fabric/").unwrap();
+        let zip_path = cwd_dir.join(format!("{}.zip", padded));
 
-    //     fs::remove_file(zip_path).unwrap();
-    //     println!("quick-sync done");
-    // }
+        // async download
+        let client = Client::new();
+
+        //~ let resp = client.get(&url).send().await?.bytes().await?;       //  BLOCK FOR TEST
+        //~ tokio::fs::write(&zip_path, &resp).await?;                      //  BLOCK FOR TEST
+
+        println!("quick-sync download complete. Extracting..");
+
+        let file = File::open(&zip_path)?;
+        let mut archive = ZipArchive::new(file)?;
+        archive.extract("/var/work/fabric/")?;
+
+        tokio::fs::remove_file(zip_path).await?;
+        println!("quick-sync done");
+
+        Ok(())
+    }
 
     // pub fn snapshot_tmp() -> u64 {
     //     let height = Fabric::rooted_tip_height();
