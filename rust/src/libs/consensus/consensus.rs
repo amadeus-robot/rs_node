@@ -1,4 +1,4 @@
-use rocksdb::WriteBatch;
+use rocksdb::{DB, WriteBatch};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::UNIX_EPOCH};
 
@@ -26,7 +26,7 @@ pub struct MapEnv {
     pub account_caller: Option<String>,
     pub account_current: Option<String>,
     pub attached_symbol: String,
-    pub attached_amount: String,
+    pub attached_amount: u64,
     pub call_counter: u64,
     pub call_exec_points: u64,
     pub call_exec_points_remaining: u64,
@@ -75,7 +75,7 @@ impl Consensus {
             account_caller: None,
             account_current: None,
             attached_symbol: "".to_string(),
-            attached_amount: "".to_string(),
+            attached_amount: 0,
             call_counter: 0,
             call_exec_points: 10_000_000,
             call_exec_points_remaining: 10_000_000,
@@ -132,10 +132,10 @@ impl Consensus {
     //     let mut mapenv = Self::make_mapenv(next_entry);
 
     //     // 2. Unpack transactions
-    //     let txus: Vec<TXUnpacked> = next_entry.txs.iter().map(|tx| Tx::unpack(tx)).collect();
+    //     let txus: Vec<Txu> = next_entry.txs.iter().map(|tx| TX::unpack(tx)).collect();
 
     //     // 3. Pre-parallel call
-    //     let (mut m_pre, mut m_rev_pre) = BIC::Base::call_txs_pre_parallel(&mapenv, &txus);
+    //     let (mut m_pre, mut m_rev_pre) = Base::call_txs_pre_parallel(mapenv, txus);
 
     //     // 4. Iterate transactions sequentially
     //     let mut m = m_pre.clone();
@@ -144,15 +144,15 @@ impl Consensus {
 
     //     for (tx_idx, txu) in txus.iter().enumerate() {
     //         let mut local_env = mapenv.clone();
-    //         local_env.insert("tx_index".to_string(), tx_idx.into());
-    //         local_env.insert("tx_signer".to_string(), txu.tx.signer.clone().into());
-    //         local_env.insert("tx_nonce".to_string(), txu.tx.nonce.into());
-    //         local_env.insert("tx_hash".to_string(), txu.hash.clone().into());
-    //         local_env.insert("account_origin".to_string(), txu.tx.signer.clone().into());
-    //         local_env.insert("account_caller".to_string(), txu.tx.signer.clone().into());
+
+    //         local_env.tx_index = tx_idx.into();
+    //         local_env.tx_signer = Some(txu.tx.unwrap().signer);
+    //         local_env.tx_hash = txu.hash.clone().into();
+    //         local_env.account_origin = txu.tx.unwrap().signer.clone().into();
+    //         local_env.account_caller = txu.tx.unwrap().signer.clone().into();
 
     //         let (m3, m_rev3, m3_gas, m3_gas_rev, result) =
-    //             BIC::Base::call_tx_actions(&local_env, txu);
+    //             Base::call_tx_actions(local_env, txu.clone());
 
     //         if result.error == "ok" {
     //             m.extend(m3.into_iter().chain(m3_gas.into_iter()));

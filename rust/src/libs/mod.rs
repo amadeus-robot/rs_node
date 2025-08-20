@@ -10,14 +10,18 @@ use {
     tokio::{task, time::sleep},
 };
 
+pub mod bic;
 pub mod consensus;
 pub mod http;
 pub mod misc;
 pub mod node;
+pub mod utils;
+pub use bic::*;
 pub use consensus::*;
 pub use http::*;
 pub use misc::*;
 pub use node::*;
+pub use utils::*;
 
 pub struct AmaApp {
     pub node_inited: Arc<AtomicBool>,

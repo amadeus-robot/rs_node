@@ -9,9 +9,9 @@ pub struct Action {
     pub function: String,
     pub args: Vec<Vec<u8>>, // binaries in Elixir
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attached_symbol: Option<Vec<u8>>,
+    pub attached_symbol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attached_amount: Option<Vec<u8>>,
+    pub attached_amount: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +37,8 @@ pub struct Txu {
 // =======================
 #[derive(Debug, thiserror::Error)]
 pub enum TxError {
+    #[error("no_actions")]
+    NoActions,
     #[error("too_large")]
     TooLarge,
     #[error("tx_not_canonical")]

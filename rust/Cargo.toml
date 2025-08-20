@@ -30,3 +30,4 @@ reqwest = { version = "0.12.23", features = ["json", "blocking"] }
 bs58 = "0.5.1"
 rayon = "1.11.0"
 zip = "4.3.0"
+wasmer_ex = { git = "https://github.com/amadeus-robot/wasmer_ex.git", branch = "main" }
