@@ -1,10 +1,15 @@
-use bitvec::prelude::*;
+use std::cell::RefCell;
+
 use blake3;
 use rocksdb::{MultiThreaded, Transaction, TransactionDB, WriteOptions};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use crate::*;
+
+thread_local! {
+    static MUTATIONS: RefCell<Vec<Mutation>> = RefCell::new(Vec::new());
+    static MUTATIONS_REVERSE: RefCell<Vec<Mutation>> = RefCell::new(Vec::new());
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub enum Mutation {
@@ -30,70 +35,73 @@ pub struct ConsensusKV;
 
 impl ConsensusKV {
     pub fn kv_put(
-        tx: &mut Transaction<TransactionDB<MultiThreaded>>,
-        mutations: &mut Vec<Mutation>,
-        mutations_reverse: &mut Vec<Mutation>,
         key: Vec<u8>,
         value: Vec<u8>,
-        term: bool,
-        to_integer: bool,
     ) -> Result<(), rocksdb::Error> {
-        let old_value = tx.get(&key)?.unwrap_or_default();
-        let exists = !old_value.is_empty();
-
-        let mut value = value.clone();
-        if term {
-            value = bincode::serialize(&value).unwrap();
-        }
-        if to_integer {
-            let int_val: i64 = String::from_utf8(value.clone()).unwrap().parse().unwrap();
-            value = int_val.to_be_bytes().to_vec();
-        }
-
-        mutations.push(Mutation::Put {
-            key: key.clone(),
-            value: value.clone(),
-        });
-        if exists {
-            mutations_reverse.push(Mutation::Put {
-                key: key.clone(),
-                value: old_value.clone(),
-            });
-        } else {
-            mutations_reverse.push(Mutation::Delete { key: key.clone() });
-        }
-
-        tx.put(&key, value)?;
-        Ok(())
-    }
-
-    pub fn kv_increment(
-        mutations: &mut Vec<Mutation>,
-        mutations_reverse: &mut Vec<Mutation>,
-        key: Vec<u8>,
-        value: i64,
-    ) -> Result<i64, rocksdb::Error> {
         let fabric = FABRIC_DB.read().unwrap();
         let fabric = fabric.as_ref().expect("Fabric not initialized");
 
-        let old_value = fabric.db.get(&key)?.unwrap_or_else(|| 0i64.to_be_bytes().to_vec());
+        let old_value = fabric.db.get(&key)?.unwrap_or_default();
+        let exists = !old_value.is_empty();
+
+        MUTATIONS.with(|mutations| {
+            mutations.borrow_mut().push(Mutation::Put {
+                key: key.clone(),
+                value: value.clone(),
+            });
+        });
+        if exists {
+            MUTATIONS_REVERSE.with(|mutations_reverse| {
+                mutations_reverse.borrow_mut().push(Mutation::Put {
+                    key: key.clone(),
+                    value: old_value.clone(),
+                })
+            });
+        } else {
+            MUTATIONS_REVERSE.with(|mutations_reverse| {
+                mutations_reverse
+                    .borrow_mut()
+                    .push(Mutation::Delete { key: key.clone() })
+            });
+        }
+
+        fabric.db.put(&key, value)?;
+        Ok(())
+    }
+
+    pub fn kv_increment(key: Vec<u8>, value: i64) -> Result<i64, rocksdb::Error> {
+        let fabric = FABRIC_DB.read().unwrap();
+        let fabric = fabric.as_ref().expect("Fabric not initialized");
+
+        let old_value = fabric
+            .db
+            .get(&key)?
+            .unwrap_or_else(|| 0i64.to_be_bytes().to_vec());
         let exists = !old_value.is_empty();
 
         let old_int = i64::from_be_bytes(old_value.clone().try_into().unwrap());
         let new_value = old_int + value;
         let new_bytes = new_value.to_be_bytes().to_vec();
 
-        mutations.push(Mutation::Put {
-            key: key.clone(),
-            value: new_bytes.clone(),
+        MUTATIONS.with(|mutations| {
+            mutations.borrow_mut().push(Mutation::Put {
+                key: key.clone(),
+                value: new_bytes.clone(),
+            });
         });
         if exists {
-            mutations_reverse.push(Mutation::Put {
-                key: key.clone(),
-                value: old_value.clone(),
+            MUTATIONS_REVERSE.with(|mutations_reverse| {
+                mutations_reverse.borrow_mut().push(Mutation::Put {
+                    key: key.clone(),
+                    value: old_value.clone(),
+                });
             });
         } else {
-            mutations_reverse.push(Mutation::Delete { key: key.clone() });
+            MUTATIONS_REVERSE.with(|mutations_reverse| {
+                mutations_reverse
+                    .borrow_mut()
+                    .push(Mutation::Delete { key: key.clone() });
+            });
         }
 
         fabric.db.put(&key, new_bytes.clone())?;

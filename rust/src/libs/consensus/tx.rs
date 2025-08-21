@@ -43,6 +43,10 @@ pub enum TxError {
     TooLarge,
     #[error("tx_not_canonical")]
     TxNotCanonical,
+    #[error("invalid_bic")]
+    InvalidBic,
+    #[error("invalid_function")]
+    InvalidFunction,
     #[error("invalid_hash")]
     InvalidHash,
     #[error("invalid_signature")]
@@ -51,6 +55,8 @@ pub enum TxError {
     NonceNotInteger,
     #[error("nonce_too_high")]
     NonceTooHigh,
+    #[error("account_has_no_bytecode")]
+    AccountHasNoBytecode,
     #[error("actions_must_be_list")]
     ActionsMustBeList,
     #[error("actions_length_must_be_1")]

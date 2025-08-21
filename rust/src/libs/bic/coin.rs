@@ -1,3 +1,5 @@
+use crate::*;
+
 pub struct Coin;
 
 impl Coin {
@@ -21,15 +23,20 @@ impl Coin {
     }
 
     pub fn burn_address() -> &'static str {
-        Coin::BURN_ADDRESS
+        Self::BURN_ADDRESS
     }
 
     pub fn burn_balance(symbol: &str) -> i64 {
-        Coin::balance(Self::BURN_ADDRESS, symbol)
+        Self::balance(Self::BURN_ADDRESS, symbol)
     }
 
     pub fn balance(pubkey: &str, symbol: &str) -> i64 {
         let key = format!("bic:coin:balance:{}:{}", pubkey, symbol);
-        kv_get_int(&key).unwrap_or(0)
+        let raw_value: Option<Vec<u8>> = ConsensusKV::kv_get(&key.as_bytes());
+        if let Some(value) = raw_value {
+            i64::from_be_bytes(value[..8].try_into().unwrap())
+        } else {
+            0
+        }
     }
 }

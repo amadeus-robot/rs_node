@@ -38,112 +38,132 @@ impl Base {
         Process::delete("mutations");
         Process::delete("mutations_reverse");
 
-        // let result = (|| -> TxResult {
-        let action = txu.tx.unwrap().actions.get(0).ok_or(TxError::NoActions)?;
+        let result: Result<_, TxError> = (|| -> TxResult {
+            let action = txu.tx.unwrap().actions.get(0).ok_or(TxError::NoActions)?;
 
-        env.account_current = Some(action.contract.clone());
+            env.account_current = Some(action.contract.clone());
 
-        if validate_public_key(&action.contract.as_bytes()) {
-            if let Some(bytecode) = Contract::bytecode(&action.contract) {
-                let seed_bin = Self::seed_random(
-                    &env.entry_vr,
-                    env.tx_hash.unwrap().as_ref(),
-                    "0",
-                    &env.call_counter.to_string(),
-                );
-                let float64 = f64::from_le_bytes(seed_bin[..8].try_into().unwrap());
-                env.seed = Some(seed_bin);
-                env.seedf64 = float64;
+            if validate_public_key(&action.contract.as_bytes()) {
+                if let Some(bytecode) = Contract::bytecode(&action.contract) {
+                    let seed_bin = Self::seed_random(
+                        &env.entry_vr,
+                        env.tx_hash.unwrap().as_ref(),
+                        "0",
+                        &env.call_counter.to_string(),
+                    );
+                    let float64 = f64::from_le_bytes(seed_bin[..8].try_into().unwrap());
+                    env.seed = Some(seed_bin);
+                    env.seedf64 = float64;
 
-                if !action.attached_symbol.unwrap().is_empty() {
-                    env.attached_symbol = action.attached_symbol.unwrap();
-                    env.attached_amount = action.attached_amount.unwrap();
+                    if !action.attached_symbol.unwrap().is_empty() {
+                        env.attached_symbol = action.attached_symbol.unwrap();
+                        env.attached_amount = action.attached_amount.unwrap();
 
-                    let amount: i64 = action.attached_amount.unwrap();
-                    if amount <= 0 {
-                        return TxResult::Err(TxError::InvalidAttachedAmount);
+                        let amount: i64 = action.attached_amount.unwrap();
+                        if amount <= 0 {
+                            return TxResult::Err(TxError::InvalidAttachedAmount);
+                        }
+                        if amount
+                            > Coin::balance(
+                                env.tx_signer.as_ref().unwrap(),
+                                &action.attached_symbol.unwrap(),
+                            )
+                        {
+                            return TxResult::Err(TxError::AttachedAmountInsufficientFunds);
+                        }
+
+                        ConsensusKV::kv_increment(
+                            format!(
+                                "bic:coin:balance:{}:{}",
+                                action.contract,
+                                action.attached_symbol.unwrap(),
+                            )
+                            .as_bytes()
+                            .to_vec(),
+                            amount,
+                        );
+                        ConsensusKV::kv_increment(
+                            format!(
+                                "bic:coin:balance:{}:{}",
+                                env.tx_signer.as_ref().unwrap(),
+                                action.attached_symbol.unwrap(),
+                            )
+                            .as_bytes()
+                            .to_vec(),
+                            -amount,
+                        );
                     }
-                    if amount
-                        > Coin::balance(
-                            env.tx_signer.as_ref().unwrap(),
-                            &action.attached_symbol.unwrap(),
+
+                    let mut result =
+                        WASM::call(env, &bytecode, &action.function, &action.args);
+
+                    let muts = Process::get("mutations").unwrap_or_default();
+                    Process::delete("mutations");
+                    let muts_rev = Process::get("mutations_reverse").unwrap_or_default();
+                    Process::delete("mutations_reverse");
+
+                    let exec_used = result.exec_used.unwrap_or(0) * 100;
+                    ConsensusKV::kv_increment(
+                        format!(
+                            "bic:coin:balance:{}:AMA",
+                            String::from_utf8(env.entry_signer).unwrap()
                         )
-                    {
-                        return TxResult::Err(TxError::AttachedAmountInsufficientFunds);
-                    }
+                        .as_bytes()
+                        .to_vec(),
+                        exec_used,
+                    );
+                    ConsensusKV::kv_increment(
+                        format!("bic:coin:balance:{}:AMA", env.tx_signer.as_ref().unwrap())
+                            .as_bytes()
+                            .to_vec(),
+                        -exec_used,
+                    );
 
-                    ConsensusKV::kv_increment(
-                        &format!(
-                            "bic:coin:balance:{}:{}",
-                            action.contract, action.attached_symbol
-                        ),
-                        amount,
+                    Process::put(
+                        "mutations_gas",
+                        Process::get("mutations").unwrap_or_default(),
                     );
-                    ConsensusKV::kv_increment(
-                        &format!(
-                            "bic:coin:balance:{}:{}",
-                            env.tx_signer.as_ref().unwrap(),
-                            action.attached_symbol
-                        ),
-                        -amount,
+                    Process::put(
+                        "mutations_gas_reverse",
+                        Process::get("mutations_reverse").unwrap_or_default(),
                     );
+                    Process::put("mutations", muts);
+                    Process::put("mutations_reverse", muts_rev);
+
+                    result
+                } else {
+                    TxResult::Err(TxError::AccountHasNoBytecode);
+                }
+            } else {
+                Self::seed_random(&env.entry_vr, env.tx_hash.unwrap().as_ref(), "0", "");
+
+                if !["Epoch", "Coin", "Contract"].contains(&action.contract.as_str()) {
+                    return TxResult::Err(TxError::InvalidBic);
+                }
+                if ![
+                    "submit_sol",
+                    "transfer",
+                    "set_emission_address",
+                    "slash_trainer",
+                    "deploy",
+                ]
+                .contains(&action.function.as_str())
+                {
+                    return TxResult::Err(TxError::InvalidFunction);
                 }
 
-                let mut result =
-                    Base::WASM::call(env, &bytecode, &action.function, &action.args);
+                let contract: Box<dyn Contract> = match action.contract {
+                    ContractType::Epoch => Box::new(Epoch),
+                    ContractType::Coin => Box::new(Coin),
+                    ContractType::Contract => Box::new(ContractImpl),
+                };
 
-                let muts = Process::get("mutations").unwrap_or_default();
-                Process::delete("mutations");
-                let muts_rev = Process::get("mutations_reverse").unwrap_or_default();
-                Process::delete("mutations_reverse");
-
-                let exec_used = result.exec_used.unwrap_or(0) * 100;
-                kv_increment(
-                    &format!("bic:coin:balance:{}:AMA", env.entry_signer_as_string()),
-                    exec_used,
-                );
-                kv_increment(
-                    &format!("bic:coin:balance:{}:AMA", env.tx_signer.as_ref().unwrap()),
-                    -exec_used,
-                );
-
-                Process::put(
-                    "mutations_gas",
-                    Process::get("mutations").unwrap_or_default(),
-                );
-                Process::put(
-                    "mutations_gas_reverse",
-                    Process::get("mutations_reverse").unwrap_or_default(),
-                );
-                Process::put("mutations", muts);
-                Process::put("mutations_reverse", muts_rev);
-
-                result
-            } else {
-                TxResult::Err("account_has_no_bytecode")
+                match contract.call(&action.function, &env, &action.args) {
+                    Ok(_) => HashMap::from([("error", "ok")]),
+                    Err(_) => HashMap::from([("error", "failed")]),
+                }
             }
-        } else {
-            Self::seed_random(&env.entry_vr, env.tx_hash.as_ref(), "0", "");
-
-            if !["Epoch", "Coin", "Contract"].contains(&action.contract.as_str()) {
-                return TxResult::Err("invalid_bic");
-            }
-            if ![
-                "submit_sol",
-                "transfer",
-                "set_emission_address",
-                "slash_trainer",
-                "deploy",
-            ]
-            .contains(&action.function.as_str())
-            {
-                return TxResult::Err("invalid_function");
-            }
-
-            BIC::SystemContracts::call(&action.contract, &action.function, env, &action.args);
-            TxResult::Ok
-        }
-        // })();
+        })();
 
         (
             Process::get("mutations").unwrap_or_default(),

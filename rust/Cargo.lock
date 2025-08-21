@@ -1596,6 +1596,7 @@ dependencies = [
  "futures-util",
  "hex",
  "indicatif",
+ "lazy_static",
  "once_cell",
  "rand",
  "rayon",

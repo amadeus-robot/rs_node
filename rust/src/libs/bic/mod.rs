@@ -1,6 +1,10 @@
 pub mod base;
-pub mod contract;
 pub mod coin;
+pub mod contract;
+pub mod wasm;
+pub mod wasm_safe;
 pub use base::*;
-pub use contract::*;
 pub use coin::*;
+pub use contract::*;
+pub use wasm::*;
+pub use wasm_safe::*;
