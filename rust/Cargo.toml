@@ -26,8 +26,9 @@ bincode = "1.3.3"
 blst = "0.3.15"
 rocksdb = "0.24.0"
 bitvec = "1.0.1"
-reqwest = { version = "0.12.23", features = ["json", "blocking"] }
+reqwest = { version = "0.11", features = ["json", "stream", "blocking", "rustls-tls"] }
 bs58 = "0.5.1"
 rayon = "1.11.0"
-zip = "4.3.0"
-wasmer_ex = { git = "https://github.com/amadeus-robot/wasmer_ex.git", branch = "main" }
+indicatif = "0.17"
+zip = "0.6"
+futures-util = "0.3"

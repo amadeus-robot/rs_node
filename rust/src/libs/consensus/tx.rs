@@ -11,7 +11,7 @@ pub struct Action {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attached_symbol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attached_amount: Option<u64>,
+    pub attached_amount: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +65,8 @@ pub enum TxError {
     ArgsMustBeList,
     #[error("arg_must_be_binary")]
     ArgMustBeBinary,
+    #[error("invalid_attached_amount")]
+    InvalidAttachedAmount,
     #[error("invalid_contract_or_function")]
     InvalidContractOrFunction,
     #[error("invalid_module_for_special_meeting")]
@@ -80,6 +82,8 @@ pub enum TxError {
     #[error("attached_amount_must_be_included")]
     AttachedAmountMustBeIncluded,
     #[error("attached_symbol_must_be_included")]
+    AttachedAmountInsufficientFunds,
+    #[error("attached_amount_insufficient_funds")]
     AttachedSymbolMustBeIncluded,
     #[error("unknown")]
     Unknown,

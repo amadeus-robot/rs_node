@@ -88,7 +88,7 @@ impl AmaApp {
             let _ = FabricSnapshot::download_latest().await;
         } else {
             // Offline init placeholder
-            //~ Consensus.apply_entry(...);          //  WORKING PART
+            // Consensus.apply_entry(...);          //  WORKING PART
         }
 
         // Spawn supervised tasks

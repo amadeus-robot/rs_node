@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::MapEnv;
+use crate::*;
 
 // use wasmer_ex::validate_contract;
 
@@ -29,10 +29,10 @@ impl Contract {
     //     }
     // }
 
-    // pub fn bytecode(account: &str) -> Option<Vec<u8>> {
-    //     let key = format!("bic:contract:account:{}:bytecode", account);
-    //     kv_get(&key)
-    // }
+    pub fn bytecode(account: &str) -> Option<Vec<u8>> {
+        let key = format!("bic:contract:account:{}:bytecode", account);
+        ConsensusKV::kv_get(&key.as_bytes())
+    }
 
     // pub fn call_deploy(env: &MapEnv, wasmbytes: &[u8]) {
     //     let key = format!(

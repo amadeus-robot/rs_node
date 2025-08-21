@@ -1,6 +1,6 @@
 use bitvec::prelude::*;
 use blake3;
-use rocksdb::{Transaction, TransactionDB, WriteOptions};
+use rocksdb::{MultiThreaded, Transaction, TransactionDB, WriteOptions};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -26,22 +26,19 @@ pub enum Mutation {
     },
 }
 
-pub struct ConsensusKV<'a> {
-    pub db: &'a TransactionDB,
-    pub tx: Transaction<'a, TransactionDB>,
-    pub mutations: Vec<Mutation>,
-    pub mutations_reverse: Vec<Mutation>,
-}
+pub struct ConsensusKV;
 
-impl<'a> ConsensusKV<'a> {
+impl ConsensusKV {
     pub fn kv_put(
-        &mut self,
+        tx: &mut Transaction<TransactionDB<MultiThreaded>>,
+        mutations: &mut Vec<Mutation>,
+        mutations_reverse: &mut Vec<Mutation>,
         key: Vec<u8>,
         value: Vec<u8>,
         term: bool,
         to_integer: bool,
     ) -> Result<(), rocksdb::Error> {
-        let old_value = self.tx.get(&key)?.unwrap_or_default();
+        let old_value = tx.get(&key)?.unwrap_or_default();
         let exists = !old_value.is_empty();
 
         let mut value = value.clone();
@@ -53,86 +50,89 @@ impl<'a> ConsensusKV<'a> {
             value = int_val.to_be_bytes().to_vec();
         }
 
-        self.mutations.push(Mutation::Put {
+        mutations.push(Mutation::Put {
             key: key.clone(),
             value: value.clone(),
         });
         if exists {
-            self.mutations_reverse.push(Mutation::Put {
+            mutations_reverse.push(Mutation::Put {
                 key: key.clone(),
                 value: old_value.clone(),
             });
         } else {
-            self.mutations_reverse
-                .push(Mutation::Delete { key: key.clone() });
+            mutations_reverse.push(Mutation::Delete { key: key.clone() });
         }
 
-        self.tx.put(&key, value)?;
+        tx.put(&key, value)?;
         Ok(())
     }
 
-    pub fn kv_increment(&mut self, key: Vec<u8>, value: i64) -> Result<i64, rocksdb::Error> {
-        let old_value = self
-            .tx
-            .get(&key)?
-            .unwrap_or_else(|| 0i64.to_be_bytes().to_vec());
+    pub fn kv_increment(
+        mutations: &mut Vec<Mutation>,
+        mutations_reverse: &mut Vec<Mutation>,
+        key: Vec<u8>,
+        value: i64,
+    ) -> Result<i64, rocksdb::Error> {
+        let fabric = FABRIC_DB.read().unwrap();
+        let fabric = fabric.as_ref().expect("Fabric not initialized");
+
+        let old_value = fabric.db.get(&key)?.unwrap_or_else(|| 0i64.to_be_bytes().to_vec());
         let exists = !old_value.is_empty();
 
         let old_int = i64::from_be_bytes(old_value.clone().try_into().unwrap());
         let new_value = old_int + value;
         let new_bytes = new_value.to_be_bytes().to_vec();
 
-        self.mutations.push(Mutation::Put {
+        mutations.push(Mutation::Put {
             key: key.clone(),
             value: new_bytes.clone(),
         });
         if exists {
-            self.mutations_reverse.push(Mutation::Put {
+            mutations_reverse.push(Mutation::Put {
                 key: key.clone(),
                 value: old_value.clone(),
             });
         } else {
-            self.mutations_reverse
-                .push(Mutation::Delete { key: key.clone() });
+            mutations_reverse.push(Mutation::Delete { key: key.clone() });
         }
 
-        self.tx.put(&key, new_bytes.clone())?;
+        fabric.db.put(&key, new_bytes.clone())?;
         Ok(new_value)
     }
 
-    pub fn kv_delete(&mut self, key: Vec<u8>) -> Result<(), rocksdb::Error> {
-        if let Some(value) = self.tx.get(&key)? {
-            self.mutations.push(Mutation::Delete { key: key.clone() });
-            self.mutations_reverse.push(Mutation::Put {
+    pub fn kv_delete(
+        tx: &mut Transaction<TransactionDB<MultiThreaded>>,
+        mutations: &mut Vec<Mutation>,
+        mutations_reverse: &mut Vec<Mutation>,
+        key: Vec<u8>,
+    ) -> Result<(), rocksdb::Error> {
+        if let Some(value) = tx.get(&key)? {
+            mutations.push(Mutation::Delete { key: key.clone() });
+            mutations_reverse.push(Mutation::Put {
                 key: key.clone(),
                 value,
             });
         }
-        self.tx.delete(&key)?;
+        tx.delete(&key)?;
         Ok(())
     }
 
-    pub fn kv_get(&self, key: &[u8], term: bool, to_integer: bool) -> Option<Vec<u8>> {
-        if let Ok(Some(value)) = self.tx.get(key) {
-            if term {
-                return Some(bincode::deserialize(&value).unwrap());
-            } else if to_integer {
-                let int_val = i64::from_be_bytes(value.try_into().unwrap());
-                return Some(int_val.to_be_bytes().to_vec());
-            } else {
-                return Some(value);
-            }
-        }
-        None
+    pub fn kv_get(key: &[u8]) -> Option<Vec<u8>> {
+        let fabric = FABRIC_DB.read().unwrap();
+        let fabric = fabric.as_ref().expect("Fabric not initialized");
+
+        fabric.db.get(key).unwrap()
     }
 
     // pub fn kv_set_bit(
-    //     &mut self,
+    //     tx: &mut Transaction<TransactionDB<MultiThreaded>>,
+    //     mutations: &mut Vec<Mutation>,
+    //     mutations_reverse: &mut Vec<Mutation>,
     //     key: Vec<u8>,
     //     bit_idx: usize,
     //     bloomsize: usize,
     // ) -> Result<bool, rocksdb::Error> {
-    //     let old_value: Vec<u8> = self.tx.get(&key)?.unwrap_or_else(|| vec![0u8; bloomsize]);
+    //     let old_value: Vec<u8> = tx.get(&key)?.unwrap_or_else(|| vec![0u8; bloomsize]);
     //     let mut bits = BitVec::<Msb0, u8>::from_vec(old_value.clone());
 
     //     if bits.get(bit_idx).copied().unwrap_or(false) {
@@ -142,17 +142,17 @@ impl<'a> ConsensusKV<'a> {
     //     bits.set(bit_idx, true);
     //     let new_bytes = bits.into_vec();
 
-    //     self.mutations.push(Mutation::SetBit {
+    //     mutations.push(Mutation::SetBit {
     //         key: key.clone(),
     //         bit_idx,
     //         bloomsize,
     //     });
-    //     self.mutations_reverse.push(Mutation::ClearBit {
+    //     mutations_reverse.push(Mutation::ClearBit {
     //         key: key.clone(),
     //         bit_idx,
     //     });
 
-    //     self.tx.put(&key, new_bytes)?;
+    //     tx.put(&key, new_bytes)?;
     //     Ok(true)
     // }
 
@@ -161,16 +161,19 @@ impl<'a> ConsensusKV<'a> {
         blake3::hash(&bin).as_bytes().to_vec()
     }
 
-    // pub fn revert(&mut self) -> Result<(), rocksdb::Error> {
-    //     for mut_item in self.mutations_reverse.iter().rev() {
+    // pub fn revert(
+    //     tx: &mut Transaction<TransactionDB<MultiThreaded>>,
+    //     mutations_reverse: &[Mutation],
+    // ) -> Result<(), rocksdb::Error> {
+    //     for mut_item in mutations_reverse.iter().rev() {
     //         match mut_item {
-    //             Mutation::Put { key, value } => self.tx.put(key, value)?,
-    //             Mutation::Delete { key } => self.tx.delete(key)?,
+    //             Mutation::Put { key, value } => tx.put(key, value)?,
+    //             Mutation::Delete { key } => tx.delete(key)?,
     //             Mutation::ClearBit { key, bit_idx } => {
-    //                 if let Some(old_value) = self.tx.get(key)? {
+    //                 if let Some(old_value) = tx.get(key)? {
     //                     let mut bits = BitVec::<Msb0, u8>::from_vec(old_value);
     //                     bits.set(*bit_idx, false);
-    //                     self.tx.put(key, bits.into_vec())?;
+    //                     tx.put(key, bits.into_vec())?;
     //                 }
     //             }
     //             _ => {}
