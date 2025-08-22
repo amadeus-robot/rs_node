@@ -3,6 +3,13 @@ use blst::min_pk::Signature;
 use std::collections::HashMap;
 
 use crate::*;
+
+#[derive(Clone)]
+pub struct AggSig {
+    pub mask: BitVec,
+    pub aggsig: Signature,
+}
+
 pub struct BLS12AggSig;
 
 impl BLS12AggSig {
@@ -68,10 +75,4 @@ impl BLS12AggSig {
             .sum();
         score / max_score
     }
-}
-
-#[derive(Clone)]
-pub struct AggSig {
-    pub mask: BitVec,
-    pub aggsig: Signature,
 }

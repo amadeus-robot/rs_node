@@ -95,3 +95,59 @@ pub enum AttestationError {
     SignerInvalid,
     InvalidSignature,
 }
+
+#[cfg(test)]
+mod attestation_tests {
+    use super::*;
+
+    #[test]
+    fn test_pack_unpack() {
+        let att = Attestation {
+            entry_hash: vec![1; 32],
+            mutations_hash: vec![2; 32],
+            signer: vec![3; 48],
+            signature: vec![4; 96],
+        };
+
+        println!("Original Attestation: {:?}", att);
+
+        // Pack the attestation
+        let packed = att.pack();
+
+        println!("Packed bytes: {:?}", packed);
+        assert!(!packed.is_empty(), "Packed bytes should not be empty");
+
+        // Unpack it back
+        let unpacked = Attestation::unpack(&packed).expect("Unpack should succeed");
+        println!("Unpacked Attestation: {:?}", unpacked);
+
+        assert_eq!(att.entry_hash, unpacked.entry_hash);
+        assert_eq!(att.mutations_hash, unpacked.mutations_hash);
+        assert_eq!(att.signer, unpacked.signer);
+        assert_eq!(att.signature, unpacked.signature);
+    }
+
+    #[test]
+    fn test_unpack_invalid_bytes() {
+        let invalid_bytes = vec![0, 1, 2, 3]; // not a valid serialized Attestation
+
+        let result = Attestation::unpack(&invalid_bytes);
+        assert!(result.is_err(), "Unpack should fail for invalid bytes");
+        println!("Expected error: {:?}", result.err().unwrap());
+    }
+
+    #[test]
+    fn test_attestation_field_lengths() {
+        let att = Attestation {
+            entry_hash: vec![0; 32],
+            mutations_hash: vec![0; 32],
+            signer: vec![0; 48],
+            signature: vec![0; 96],
+        };
+
+        assert_eq!(att.entry_hash.len(), 32);
+        assert_eq!(att.mutations_hash.len(), 32);
+        assert_eq!(att.signer.len(), 48);
+        assert_eq!(att.signature.len(), 96);
+    }
+}

@@ -56,9 +56,13 @@ impl WASM {
         function: &str,
         args: &[String],
     ) -> Result<Vec<u8>, String> {
-        WASM_SAFE::spawn(mapenv, wasmbytes, function, args);
-        // Placeholder for actual WASM call logic
-        // This should interact with the WASM runtime to execute the function
+        // Convert references to owned data
+        let wasmbytes_owned = wasmbytes.to_vec(); // &[u8] -> Vec<u8>
+        let function_owned = function.to_string(); // &str -> String
+        let args_owned = args.to_vec(); // &[String] -> Vec<String>
+
+        WASM_SAFE::spawn(mapenv, wasmbytes_owned, function_owned, args_owned);
+        
         Ok(vec![]) // Return empty vector as placeholder
     }
 

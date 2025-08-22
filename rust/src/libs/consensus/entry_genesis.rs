@@ -137,6 +137,8 @@ Tech stocks tank as a Chinese competitor threatens to upend the AI frenzy; Nvidi
         dr_concat.extend_from_slice(&dr);
         dr_concat.extend_from_slice(&dr);
 
+        println!("trainer_sk: {:?}", trainer_sk);
+
         let sk = SecretKey::from_bytes(trainer_sk).unwrap();
 
         sk.sign(&dr_concat, &BLS12AggSig::DST_VRF, &[]);
@@ -188,5 +190,63 @@ fn bls_sign(_sk: &Vec<u8>, msg: &[u8]) -> Vec<u8> {
 mod Blake3 {
     pub fn hash(input: &[u8]) -> blake3::Hash {
         blake3::hash(input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::OnceLock;
+
+    #[test]
+    fn test_signer_with_log() {
+        let signer = EntryGenesis::signer();
+        println!("Signer: {:?}", signer);
+        assert_eq!(signer.len(), 48);
+    }
+
+    #[test]
+    fn test_pop_with_log() {
+        let pop = EntryGenesis::pop();
+        println!("PoP: {:?}", pop);
+        assert_eq!(pop.len(), 96);
+    }
+
+    #[test]
+    fn test_attestation_with_log() {
+        let att = EntryGenesis::attestation();
+        println!("Attestation signature: {:?}", att.signature);
+        println!("Attestation signer: {:?}", att.signer);
+        println!("Attestation entry_hash: {:?}", att.entry_hash);
+        println!("Attestation mutations_hash: {:?}", att.mutations_hash);
+
+        assert_eq!(att.signature.len(), 96);
+        assert_eq!(att.signer, EntryGenesis::signer());
+        assert_eq!(att.entry_hash.len(), 32);
+    }
+
+    #[test]
+    fn test_get_genesis_entry_with_log() {
+        let entry = EntryGenesis::get();
+        println!("Genesis Entry Header: {:?}", entry.header_unpacked);
+        println!("Genesis Entry txs: {:?}", entry.txs);
+        println!("Genesis Entry signature: {:?}", entry.signature);
+
+        assert_eq!(entry.header_unpacked.slot, 0);
+        assert_eq!(entry.header_unpacked.height, 0);
+        assert_eq!(entry.header_unpacked.prev_slot, -1);
+    }
+
+    #[test]
+    fn test_generate_with_log() {
+        static TRAINER_PK: OnceLock<Vec<u8>> = OnceLock::new();
+        static TRAINER_SK: OnceLock<Vec<u8>> = OnceLock::new();
+
+        TRAINER_PK.get_or_init(|| vec![1u8; 48]);
+        TRAINER_SK.get_or_init(|| vec![2u8; 32]);
+
+        println!("Calling EntryGenesis::generate()...");
+        EntryGenesis::generate();
+        println!("Generate finished (placeholder).");
     }
 }

@@ -40,3 +40,79 @@ impl Coin {
         }
     }
 }
+
+// Override ConsensusKV for testing
+mod coin_tests {
+    use super::*;
+
+    #[test]
+    fn test_to_flat() {
+        assert_eq!(Coin::to_flat(1), 1_000_000_000);
+        assert_eq!(Coin::to_flat(123), 123_000_000_000);
+    }
+
+    #[test]
+    fn test_to_cents() {
+        assert_eq!(Coin::to_cents(1), 10_000_000);
+        assert_eq!(Coin::to_cents(50), 500_000_000);
+    }
+
+    #[test]
+    fn test_to_tenthousandth() {
+        assert_eq!(Coin::to_tenthousandth(1), 100_000);
+        assert_eq!(Coin::to_tenthousandth(20), 2_000_000);
+    }
+
+    #[test]
+    fn test_from_flat() {
+        let val = Coin::from_flat(1_000_000_000);
+        assert!((val - 1.0).abs() < 1e-9);
+
+        let val2 = Coin::from_flat(500_000_000);
+        assert!((val2 - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_burn_address() {
+        assert_eq!(
+            Coin::burn_address(),
+            "000000000000000000000000000000000000000000000000"
+        );
+    }
+
+    //  Fabric not initialized
+    #[test]
+    fn test_balance_zero() {
+        let pubkey = "pubkey1";
+        let symbol = "SYM";
+        let balance = Coin::balance(pubkey, symbol);
+        assert_eq!(balance, 0);
+    }
+
+    #[test]
+    fn test_balance_set() {
+        let pubkey = "pubkey1";
+        let symbol = "SYM";
+        let value: i64 = 12345;
+        // ConsensusKV::kv_set(
+        //     format!("bic:coin:balance:{}:{}", pubkey, symbol).as_bytes(),
+        //     &value.to_be_bytes(),
+        // );
+
+        let balance = Coin::balance(pubkey, symbol);
+        assert_eq!(balance, value);
+    }
+
+    #[test]
+    fn test_burn_balance_set() {
+        let symbol = "SYM";
+        let value: i64 = 999;
+        // ConsensusKV::kv_set(
+        //     format!("bic:coin:balance:{}:{}", Coin::BURN_ADDRESS, symbol).as_bytes(),
+        //     &value.to_be_bytes(),
+        // );
+
+        let balance = Coin::burn_balance(symbol);
+        assert_eq!(balance, value);
+    }
+}

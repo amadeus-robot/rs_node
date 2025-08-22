@@ -34,11 +34,26 @@ impl Contract {
         ConsensusKV::kv_get(&key.as_bytes())
     }
 
-    pub fn call_deploy(env: &MapEnv, wasmbytes: &[u8]) {
+    pub fn call(env: &MapEnv, wasmbytes: &[u8]) {
         let key = format!(
             "bic:contract:account:{:?}:bytecode",
             hex::encode(env.account_caller.as_ref().unwrap())
         );
-        ConsensusKV::kv_put(key.as_bytes().to_vec(), wasmbytes.to_vec());
+        let _ = ConsensusKV::kv_put(key.as_bytes().to_vec(), wasmbytes.to_vec());
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn test_bytecode() {
+        
+    }
+
+    #[test]
+    fn test_call() {
+        
     }
 }

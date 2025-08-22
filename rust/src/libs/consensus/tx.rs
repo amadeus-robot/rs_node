@@ -97,6 +97,13 @@ pub enum TxError {
 
 pub type TxResult<T> = Result<T, TxError>;
 
+#[derive(Debug, Clone)]
+pub struct TxReturn {
+    pub error: Option<String>,
+    pub reason: Option<String>,
+    pub exec_used: u64,
+}
+
 // =======================
 // TX module (functions)
 // =======================
