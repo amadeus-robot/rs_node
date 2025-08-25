@@ -118,7 +118,6 @@ impl EntryGenesis {
     }
 
     pub fn generate() {
-        let trainer_pk = &AMACONFIG.trainer_pk;
         let trainer_sk = &AMACONFIG.trainer_sk;
 
         pub const ENTROPY_SEED: &'static [u8; 117] = b"\
@@ -137,59 +136,25 @@ Tech stocks tank as a Chinese competitor threatens to upend the AI frenzy; Nvidi
         dr_concat.extend_from_slice(&dr);
         dr_concat.extend_from_slice(&dr);
 
-        println!("trainer_sk: {:?}", trainer_sk);
+        let vr = BlsRs::sign(trainer_sk, &dr_concat, BLS12AggSig::DST_VRF).unwrap();
 
-        let sk = SecretKey::from_bytes(trainer_sk).unwrap();
+        let entry = Entry {
+            header_unpacked: EntryHeader {
+                slot: 0,
+                height: 0,
+                prev_slot: -1,
+                prev_hash: vec![],
+                dr: dr.clone(),
+                vr: vr.clone(),
+                signer: trainer_sk.clone(),
+                txs_hash: vec![],
+            },
+            txs: vec![],
+            hash: vec![],
+            signature: vec![],
+            mask: None,
+        };
 
-        sk.sign(&dr_concat, &BLS12AggSig::DST_VRF, &[]);
-        // vr = BlsEx.sign!(sk, dr<>dr<>dr, BLS12AggSig.dst_vrf())
-    }
-
-    // pub fn generate(&self) {
-    //     let config = CONFIG.get().expect("Config not initialized");
-    //     let pk = &config.trainer_pk;
-    //     let sk = &config.trainer_sk;
-
-    //     let entropy_seed = b"January 27, 2025\n\nTech stocks tank as a Chinese competitor threatens to upend the AI frenzy; Nvidia sinks nearly 17%";
-    //     let dr = Blake3::hash(entropy_seed);
-
-    //     // VRF: simplified placeholder, use actual BLS signing
-    //     let vr_input = [dr.as_bytes(), dr.as_bytes(), dr.as_bytes()].concat();
-    //     let vr = bls_sign(sk, &vr_input);
-
-    //     let entry_header = EntryHeader {
-    //         slot: 0,
-    //         height: 0,
-    //         prev_slot: -1,
-    //         prev_hash: vec![],
-    //         dr: dr.as_bytes().to_vec(),
-    //         vr,
-    //         signer: pk.clone(),
-    //         txs_hash: vec![],
-    //     };
-
-    //     let entry = Entry {
-    //         header_unpacked: entry_header,
-    //         txs: vec![],
-    //         hash: vec![],
-    //         signature: vec![],
-    //     };
-
-    //     // TODO: call exit and mutations, produce attestation, PoP, etc.
-    //     println!("Generated entry: {:?}", entry);
-    // }
-}
-
-// Placeholder function for BLS signing
-fn bls_sign(_sk: &Vec<u8>, msg: &[u8]) -> Vec<u8> {
-    // Replace with real BLS signing
-    msg.to_vec()
-}
-
-// Wrapper for Blake3
-mod Blake3 {
-    pub fn hash(input: &[u8]) -> blake3::Hash {
-        blake3::hash(input)
     }
 }
 
@@ -237,14 +202,9 @@ mod tests {
         assert_eq!(entry.header_unpacked.prev_slot, -1);
     }
 
+
     #[test]
     fn test_generate_with_log() {
-        static TRAINER_PK: OnceLock<Vec<u8>> = OnceLock::new();
-        static TRAINER_SK: OnceLock<Vec<u8>> = OnceLock::new();
-
-        TRAINER_PK.get_or_init(|| vec![1u8; 48]);
-        TRAINER_SK.get_or_init(|| vec![2u8; 32]);
-
         println!("Calling EntryGenesis::generate()...");
         EntryGenesis::generate();
         println!("Generate finished (placeholder).");

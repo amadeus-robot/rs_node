@@ -1,5 +1,6 @@
 use crate::*;
 use serde::{Deserialize, Serialize};
+use serde_json::Map;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,144 +156,160 @@ impl TX {
 
     // // validate(tx_packed, is_special_meeting_block \\ false)
     // // Returns Ok(txu) on success, Err(TxError) on failure.
-    // pub fn validate(env: &impl Env, tx_packed: &[u8], is_special_meeting_block: bool) -> TxResult<Txu> {
-    //     // size check
-    //     if tx_packed.len() >= env.tx_size() {
-    //         return Err(TxError::TooLarge);
-    //     }
+    pub fn validate(tx_packed: &[u8], is_special_meeting_block: bool) -> TxResult<Txu> {
+        let tx_size = CONFIG.ama.tx_size as usize;
+        // size check
+        if tx_packed.len() >= tx_size {
+            return Err(TxError::TooLarge);
+        }
 
-    //     // txu = VanillaSer.decode!(tx_packed)
-    //     let mut txu_raw: Txu = VanillaSer::decode(tx_packed);
+        // txu = VanillaSer.decode!(tx_packed)
+        let (_, txu_raw) = VanillaSer::decode(tx_packed).unwrap();
 
-    //     // Keep only tx_encoded/hash/signature then decode tx from tx_encoded
-    //     let tx_encoded = txu_raw.tx_encoded.clone();
-    //     let mut tx: Tx = VanillaSer::decode(&tx_encoded);
+        // let mut txu = Map::new();
+        // for key in ["tx_encoded", "hash", "signature"] {
+        //     if let Some(v) = txu_raw.get(key).cloned() {
+        //         txu.insert(key.to_string(), v);
+        //     }
+        // }
 
-    //     // Normalize actions: keep only specific keys and Optional attachments
-    //     let actions: Vec<Action> = tx
-    //         .actions
-    //         .into_iter()
-    //         .map(|a| Action {
-    //             op: a.op,
-    //             contract: a.contract,
-    //             function: a.function,
-    //             args: a.args,
-    //             attached_symbol: a.attached_symbol,
-    //             attached_amount: a.attached_amount,
-    //         })
-    //         .collect();
+        // let mut txu = Map::new();
+        // for key in ["tx_encoded", "hash", "signature"] {
+        //     if let Some(v) = txu_raw.get(key).cloned() {
+        //         txu.insert(key.to_string(), v);
+        //     }
+        // }
 
-    //     tx.actions = actions;
-    //     txu_raw.tx = Some(tx.clone());
+        // let temp = VanillaSer::decode(txu_raw).unwrap();
 
-    //     let hash = txu_raw.hash.clone();
-    //     let signature = txu_raw.signature.clone();
+        // let tx_encoded = txu_raw.tx_encoded.clone();
+        // let mut tx: Tx = VanillaSer::decode(&tx_encoded);
 
-    //     // normalize_atoms(txu)
-    //     let mut txu = TX::normalize_atoms(txu_raw);
+        // // Normalize actions: keep only specific keys and Optional attachments
+        // let actions: Vec<Action> = tx
+        //     .actions
+        //     .into_iter()
+        //     .map(|a| Action {
+        //         op: a.op,
+        //         contract: a.contract,
+        //         function: a.function,
+        //         args: a.args,
+        //         attached_symbol: a.attached_symbol,
+        //         attached_amount: a.attached_amount,
+        //     })
+        //     .collect();
 
-    //     // canonical check
-    //     let canonical = Canonical {
-    //         tx_encoded: VanillaSer::encode(txu.tx.as_ref().unwrap()),
-    //         hash: hash.clone(),
-    //         signature: signature.clone(),
-    //     };
-    //     let canonical_bytes = VanillaSer::encode(&canonical);
-    //     if tx_packed != canonical_bytes {
-    //         return Err(TxError::TxNotCanonical);
-    //     }
+        // tx.actions = actions;
+        // txu_raw.tx = Some(tx.clone());
 
-    //     // hash check
-    //     if hash != blake3_hash(&txu.tx_encoded) {
-    //         return Err(TxError::InvalidHash);
-    //     }
+        // let hash = txu_raw.hash.clone();
+        // let signature = txu_raw.signature.clone();
 
-    //     // signature check
-    //     let tx_ref = txu.tx.as_ref().ok_or(TxError::Unknown)?;
-    //     if !env.bls_verify(tx_ref.signer.as_bytes(), &txu.signature, &txu.hash) {
-    //         return Err(TxError::InvalidSignature);
-    //     }
+        // // normalize_atoms(txu)
+        // let mut txu = TX::normalize_atoms(txu_raw);
 
-    //     // nonce checks
-    //     // (In Elixir: is_integer nonce; here it's typed u128 so it's integer by type)
-    //     let nonce = tx_ref.nonce;
-    //     if nonce > 99_999_999_999_999_999_999u128 {
-    //         return Err(TxError::NonceTooHigh);
-    //     }
+        // // canonical check
+        // let canonical = Canonical {
+        //     tx_encoded: VanillaSer::encode(txu.tx.as_ref().unwrap()),
+        //     hash: hash.clone(),
+        //     signature: signature.clone(),
+        // };
+        // let canonical_bytes = VanillaSer::encode(&canonical);
+        // if tx_packed != canonical_bytes {
+        //     return Err(TxError::TxNotCanonical);
+        // }
 
-    //     // actions checks
-    //     let actions_ref = &tx_ref.actions;
-    //     if actions_ref.is_empty() {
-    //         return Err(TxError::ActionsMustBeList);
-    //     }
-    //     if actions_ref.len() != 1 {
-    //         return Err(TxError::ActionsLengthMustBe1);
-    //     }
-    //     let action = &actions_ref[0];
+        // // hash check
+        // if hash != blake3_hash(&txu.tx_encoded) {
+        //     return Err(TxError::InvalidHash);
+        // }
 
-    //     if action.op != "call" {
-    //         return Err(TxError::OpMustBeCall);
-    //     }
-    //     // contract/function binary checks => here both are Strings; consider non-empty
-    //     if action.contract.is_empty() {
-    //         return Err(TxError::ContractMustBeBinary);
-    //     }
-    //     if action.function.is_empty() {
-    //         return Err(TxError::FunctionMustBeBinary);
-    //     }
+        // // signature check
+        // let tx_ref = txu.tx.as_ref().ok_or(TxError::Unknown)?;
+        // if !env.bls_verify(tx_ref.signer.as_bytes(), &txu.signature, &txu.hash) {
+        //     return Err(TxError::InvalidSignature);
+        // }
 
-    //     // args must be list of binaries
-    //     // (already Vec<Vec<u8>> so type ensures list; ensure each arg is binary)
-    //     for arg in &action.args {
-    //         if arg.is_empty() {
-    //             // In Elixir: "is_binary" (empty is allowed there, but we keep parity by not failing on empty)
-    //             // If you want to forbid empty, uncomment next line:
-    //             // return Err(TxError::ArgMustBeBinary);
-    //         }
-    //     }
+        // // nonce checks
+        // // (In Elixir: is_integer nonce; here it's typed u128 so it's integer by type)
+        // let nonce = tx_ref.nonce;
+        // if nonce > 99_999_999_999_999_999_999u128 {
+        //     return Err(TxError::NonceTooHigh);
+        // }
 
-    //     // contract/function validity
-    //     let core_ok = (action.contract == "Epoch"
-    //         || action.contract == "Coin"
-    //         || action.contract == "Contract")
-    //         && (action.function == "submit_sol"
-    //             || action.function == "transfer"
-    //             || action.function == "set_emission_address"
-    //             || action.function == "slash_trainer"
-    //             || action.function == "deploy");
+        // // actions checks
+        // let actions_ref = &tx_ref.actions;
+        // if actions_ref.is_empty() {
+        //     return Err(TxError::ActionsMustBeList);
+        // }
+        // if actions_ref.len() != 1 {
+        //     return Err(TxError::ActionsLengthMustBe1);
+        // }
+        // let action = &actions_ref[0];
 
-    //     let is_valid_contract = core_ok || env.bls_validate_public_key(&action.contract);
-    //     if !is_valid_contract {
-    //         return Err(TxError::InvalidContractOrFunction);
-    //     }
+        // if action.op != "call" {
+        //     return Err(TxError::OpMustBeCall);
+        // }
+        // // contract/function binary checks => here both are Strings; consider non-empty
+        // if action.contract.is_empty() {
+        //     return Err(TxError::ContractMustBeBinary);
+        // }
+        // if action.function.is_empty() {
+        //     return Err(TxError::FunctionMustBeBinary);
+        // }
 
-    //     // special meeting block rules
-    //     if is_special_meeting_block {
-    //         if action.contract != "Epoch" {
-    //             return Err(TxError::InvalidModuleForSpecialMeeting);
-    //         }
-    //         if action.function != "slash_trainer" {
-    //             return Err(TxError::InvalidFunctionForSpecialMeeting);
-    //         }
-    //     }
+        // // args must be list of binaries
+        // // (already Vec<Vec<u8>> so type ensures list; ensure each arg is binary)
+        // for arg in &action.args {
+        //     if arg.is_empty() {
+        //         // In Elixir: "is_binary" (empty is allowed there, but we keep parity by not failing on empty)
+        //         // If you want to forbid empty, uncomment next line:
+        //         // return Err(TxError::ArgMustBeBinary);
+        //     }
+        // }
 
-    //     // attachment checks
-    //     if let Some(sym) = &action.attached_symbol {
-    //         // "must be binary" satisfied by type; enforce size 1..32
-    //         let len = sym.len();
-    //         if len < 1 || len > 32 {
-    //             return Err(TxError::AttachedSymbolWrongSize);
-    //         }
-    //     }
-    //     if action.attached_symbol.is_some() && action.attached_amount.is_none() {
-    //         return Err(TxError::AttachedAmountMustBeIncluded);
-    //     }
-    //     if action.attached_amount.is_some() && action.attached_symbol.is_none() {
-    //         return Err(TxError::AttachedSymbolMustBeIncluded);
-    //     }
+        // // contract/function validity
+        // let core_ok = (action.contract == "Epoch"
+        //     || action.contract == "Coin"
+        //     || action.contract == "Contract")
+        //     && (action.function == "submit_sol"
+        //         || action.function == "transfer"
+        //         || action.function == "set_emission_address"
+        //         || action.function == "slash_trainer"
+        //         || action.function == "deploy");
 
-    //     Ok(txu)
-    // }
+        // let is_valid_contract = core_ok || env.bls_validate_public_key(&action.contract);
+        // if !is_valid_contract {
+        //     return Err(TxError::InvalidContractOrFunction);
+        // }
+
+        // // special meeting block rules
+        // if is_special_meeting_block {
+        //     if action.contract != "Epoch" {
+        //         return Err(TxError::InvalidModuleForSpecialMeeting);
+        //     }
+        //     if action.function != "slash_trainer" {
+        //         return Err(TxError::InvalidFunctionForSpecialMeeting);
+        //     }
+        // }
+
+        // // attachment checks
+        // if let Some(sym) = &action.attached_symbol {
+        //     // "must be binary" satisfied by type; enforce size 1..32
+        //     let len = sym.len();
+        //     if len < 1 || len > 32 {
+        //         return Err(TxError::AttachedSymbolWrongSize);
+        //     }
+        // }
+        // if action.attached_symbol.is_some() && action.attached_amount.is_none() {
+        //     return Err(TxError::AttachedAmountMustBeIncluded);
+        // }
+        // if action.attached_amount.is_some() && action.attached_symbol.is_none() {
+        //     return Err(TxError::AttachedSymbolMustBeIncluded);
+        // }
+
+        // Ok(txu)
+    }
 
     // // build(sk, contract, function, args, nonce \\ nil, attached_symbol \\ nil, attached_amount \\ nil)
     // // -> packed bytes (like VanillaSer.encode(%{tx_encoded, hash, signature}))

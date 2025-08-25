@@ -1,4 +1,3 @@
-// use blst::{PublicKey, SecretKey, Signature, sign, verify};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
@@ -25,27 +24,24 @@ impl Attestation {
     }
 
     // Sign entry_hash + mutations_hash with trainer secret key
-    // pub fn sign(entry_hash: [u8; 32], mutations_hash: [u8; 32]) -> Self {
-    //     // Fetch from config or env
-    //     let sk_bytes = std::env::var("TRAINER_SK").expect("TRAINER_SK not set");
-    //     let pk_bytes = std::env::var("TRAINER_PK").expect("TRAINER_PK not set");
+    pub fn sign(entry_hash: [u8; 32], mutations_hash: [u8; 32]) -> Self {
+        // Fetch from config or env
+        let sk_bytes = CONFIG.ama.trainer_sk.clone();
+        let pk_bytes = CONFIG.ama.trainer_pk.clone();
 
-    //     let sk = SecretKey::from_bytes(&hex::decode(sk_bytes).unwrap()).unwrap();
-    //     let pk = PublicKey::from_bytes(&hex::decode(pk_bytes).unwrap()).unwrap();
+        let mut msg = Vec::new();
+        msg.extend_from_slice(&entry_hash);
+        msg.extend_from_slice(&mutations_hash);
 
-    //     let mut msg = Vec::new();
-    //     msg.extend_from_slice(&entry_hash);
-    //     msg.extend_from_slice(&mutations_hash);
+        let sig = BlsRs::sign(&sk_bytes, &msg, BLS12AggSig::DST_ATT).unwrap();
 
-    //     let sig: Signature = sign(&sk, &msg);
-
-    //     Self {
-    //         entry_hash,
-    //         mutations_hash,
-    //         signer: pk.to_bytes(),
-    //         signature: sig.to_bytes(),
-    //     }
-    // }
+        Self {
+            entry_hash: entry_hash.to_vec(),
+            mutations_hash: mutations_hash.to_vec(),
+            signer: pk_bytes,
+            signature: sig,
+        }
+    }
 
     // Validate the attestation structure & signature
     // pub fn validate(&self) -> Result<(), AttestationError> {

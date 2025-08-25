@@ -4,49 +4,6 @@ use std::collections::HashMap;
 
 use crate::*;
 
-// Placeholder BLS functions
-mod bls {
-    pub fn sign(_sk: &[u8], msg: &[u8], _dst: &[u8]) -> Vec<u8> {
-        msg.to_vec() // replace with actual BLS signing
-    }
-    pub fn verify(_pk: &[u8], _sig: &[u8], _msg: &[u8], _dst: &[u8]) -> bool {
-        true
-    }
-    pub fn aggregate_public_keys(_keys: Vec<&[u8]>) -> Vec<u8> {
-        vec![]
-    }
-}
-
-// Placeholder TX module
-mod tx {
-    pub fn unpack(tx: &[u8]) -> TxUnpacked {
-        TxUnpacked { tx: Tx {} }
-    }
-    pub fn validate(_tx: &[u8], _special: bool) -> Result<(), &'static str> {
-        Ok(())
-    }
-    pub struct Tx;
-    pub struct TxUnpacked {
-        pub tx: Tx,
-    }
-}
-
-// Placeholder Consensus module
-mod consensus {
-    pub fn trainers_for_height(_height: u64) -> Vec<Vec<u8>> {
-        vec![]
-    }
-    pub fn chain_epoch() -> u32 {
-        0
-    }
-    pub fn chain_nonce(_signer: &[u8]) -> Option<u64> {
-        Some(0)
-    }
-    pub fn chain_balance(_signer: &[u8]) -> i64 {
-        1000
-    }
-}
-
 // Entry header and entry structs
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntryHeader {
@@ -81,22 +38,23 @@ impl Entry {
         bincode::serialize(&self).unwrap()
     }
 
-    pub fn sign(mut self, sk: &[u8]) -> Entry {
+    pub fn sign(mut entry_unpacked: Entry) -> Entry {
+        let sk = &CONFIG.ama.trainer_sk.clone();
         // txs_hash = hash of concatenated txs
-        let txs_concat: Vec<u8> = self.txs.concat();
+        let txs_concat: Vec<u8> = entry_unpacked.txs.concat();
         let txs_hash = blake3::hash(&txs_concat).as_bytes().to_vec();
-        self.header_unpacked.txs_hash = txs_hash.clone();
+        entry_unpacked.header_unpacked.txs_hash = txs_hash.clone();
 
-        let header_bin = bincode::serialize(&self.header_unpacked).unwrap();
+        let header_bin = bincode::serialize(&entry_unpacked.header_unpacked).unwrap();
         let hash = blake3::hash(&header_bin).as_bytes().to_vec();
-        let signature = bls::sign(sk, &hash, b"BLS12AggSig_dst_entry");
+        let signature = BlsRs::sign(sk, &hash, b"BLS12AggSig_dst_entry").unwrap();
 
         Entry {
-            header_unpacked: self.header_unpacked.clone(),
-            txs: self.txs.clone(),
+            header_unpacked: entry_unpacked.header_unpacked.clone(),
+            txs: entry_unpacked.txs.clone(),
             hash,
             signature,
-            mask: self.mask.clone(),
+            mask: entry_unpacked.mask.clone(),
         }
     }
 
@@ -106,15 +64,14 @@ impl Entry {
             .to_vec();
         if let Some(mask) = &self.mask {
             // Placeholder for masked BLS validation
-            let trainers = consensus::trainers_for_height(self.header_unpacked.height);
+            let trainers = Consensus::trainers_for_height(self.header_unpacked.height);
             let _trainers_signed = trainers; // unmask logic
-            let agg_pk =
-                bls::aggregate_public_keys(_trainers_signed.iter().map(|x| x.as_slice()).collect());
-            if !bls::verify(&agg_pk, &self.signature, &hash, b"BLS12AggSig_dst_entry") {
+            let agg_pk = BlsRs::aggregate_public_keys(_trainers_signed).unwrap();
+            if !BlsRs::verify(&agg_pk, &self.signature, &hash, b"BLS12AggSig_dst_entry") {
                 return Err("invalid_signature");
             }
         } else {
-            if !bls::verify(
+            if !BlsRs::verify(
                 &self.header_unpacked.signer,
                 &self.signature,
                 &hash,
@@ -137,7 +94,7 @@ impl Entry {
         }
 
         for tx in &self.txs {
-            tx::validate(tx, self.mask.is_some())?;
+            TX::validate(tx, self.mask.is_some())?;
         }
         Ok(())
     }
@@ -158,13 +115,13 @@ impl Entry {
         if blake3::hash(&ceh.dr).as_bytes().to_vec() != neh.dr {
             return Err("invalid_dr");
         }
-        if !bls::verify(&neh.signer, &neh.vr, &ceh.vr, b"BLS12AggSig_dst_vrf") {
+        if !BlsRs::verify(&neh.signer, &neh.vr, &ceh.vr, b"BLS12AggSig_dst_vrf") {
             return Err("invalid_vr");
         }
 
         let mut state: HashMap<(u8, Vec<u8>), u64> = HashMap::new();
         for tx in &next_entry.txs {
-            let txu = tx::unpack(tx);
+            let txu = TX::unpack(tx);
             // Validate nonce, balance, epoch, etc. Placeholder
         }
 
@@ -175,7 +132,7 @@ impl Entry {
         let dr = blake3::hash(&cur_entry.header_unpacked.dr)
             .as_bytes()
             .to_vec();
-        let vr = bls::sign(sk, &cur_entry.header_unpacked.vr, b"BLS12AggSig_dst_vrf");
+        let vr = BlsRs::sign(sk, &cur_entry.header_unpacked.vr, b"BLS12AggSig_dst_vrf").unwrap();
 
         let header = EntryHeader {
             slot,
@@ -207,7 +164,7 @@ impl Entry {
 
     pub fn contains_tx(&self, txfunction: &str) -> bool {
         for tx in &self.txs {
-            let txu = tx::unpack(tx);
+            let txu = TX::unpack(tx);
             // Placeholder: assume action function name exists
             // return true if any tx action matches txfunction
         }
