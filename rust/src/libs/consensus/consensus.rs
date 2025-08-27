@@ -120,6 +120,14 @@ impl Consensus {
         trainers[index].clone()
     }
 
+    pub fn chain_height() {}
+
+    pub fn chain_epoch() {}
+
+    pub fn chain_tip_entry() -> Entry {
+        Entry::unpack(None)
+    }
+
     // pub fn apply_entry_1(
     //     next_entry: &Entry,
     //     cf: &ColumnFamilies,

@@ -149,7 +149,7 @@ impl Fabric {
         // Use default CF for simplicity
         let cf = fabric.db.cf_handle("default")?;
         match fabric.db.get_cf(&cf, h) {
-            Ok(Some(data)) => Some(Entry::unpack(&data)), // pass slice and wrap in Some
+            Ok(Some(data)) => Some(Entry::unpack(Some(&data))), // pass slice and wrap in Some
             Ok(None) => None,
             Err(err) => {
                 eprintln!("RocksDB get error: {}", err);

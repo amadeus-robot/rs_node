@@ -28,9 +28,16 @@ pub struct Entry {
 
 // Entry methods
 impl Entry {
-    pub fn unpack(entry_packed: &[u8]) -> Entry {
-        // Placeholder: In Elixir, binary_to_term; here use bincode, serde, or manual deserialization
-        bincode::deserialize(entry_packed).unwrap()
+    pub fn unpack(entry_packed: Option<&[u8]>) -> Option<Self> {
+        match entry_packed {
+            None => None,
+            Some(bytes) => {
+                // Try deserializing the Entry
+                let mut entry: Entry = bincode::deserialize(bytes).ok()?;
+                // Try deserializing the header inside
+                Some(entry)
+            }
+        }
     }
 
     pub fn pack(&self) -> Vec<u8> {

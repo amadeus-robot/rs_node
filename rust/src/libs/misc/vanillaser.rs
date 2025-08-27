@@ -15,7 +15,7 @@ pub struct VanillaSer;
 
 impl VanillaSer {
     pub fn validate(binary: &[u8]) -> Option<Term> {
-        let (term, rest) = Self::decode(binary).ok()?;
+        let (term, rest) = Self::inner_decode(binary).ok()?;
         if rest.is_empty() && binary == Self::encode(&term).as_slice() {
             Some(term)
         } else {
@@ -66,7 +66,13 @@ impl VanillaSer {
         }
     }
 
-    pub fn decode(binary: &[u8]) -> Result<(Term, &[u8]), String> {
+    pub fn decode(binary: &[u8]) -> Result<Term, String> {
+        let (term, _) = Self::inner_decode(binary).unwrap();
+
+        Ok(term)
+    }
+
+    pub fn inner_decode(binary: &[u8]) -> Result<(Term, &[u8]), String> {
         if binary.is_empty() {
             return Err("Empty input".into());
         }
@@ -93,7 +99,7 @@ impl VanillaSer {
                 let len = len as usize;
                 let mut items = Vec::with_capacity(len);
                 for _ in 0..len {
-                    let (item, rest_next) = Self::decode(rest2)?;
+                    let (item, rest_next) = Self::inner_decode(rest2)?;
                     items.push(item);
                     rest2 = rest_next;
                 }
@@ -104,8 +110,8 @@ impl VanillaSer {
                 let len = len as usize;
                 let mut map = BTreeMap::new();
                 for _ in 0..len {
-                    let (k, rest_next) = Self::decode(rest2)?;
-                    let (v, rest_next2) = Self::decode(rest_next)?;
+                    let (k, rest_next) = Self::inner_decode(rest2)?;
+                    let (v, rest_next2) = Self::inner_decode(rest_next)?;
                     map.insert(k, v);
                     rest2 = rest_next2;
                 }
@@ -119,7 +125,10 @@ impl VanillaSer {
         let sign = if i >= 0 { 0 } else { 1 };
         let abs_i = i.abs() as u64;
         let bytes = abs_i.to_be_bytes();
-        let first_non_zero = bytes.iter().position(|&b| b != 0).unwrap_or(bytes.len() - 1);
+        let first_non_zero = bytes
+            .iter()
+            .position(|&b| b != 0)
+            .unwrap_or(bytes.len() - 1);
         let payload = &bytes[first_non_zero..];
         acc.push((sign << 7 | payload.len() as u8) as u8);
         acc.extend_from_slice(payload);

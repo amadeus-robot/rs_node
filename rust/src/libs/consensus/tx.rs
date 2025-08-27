@@ -1,7 +1,10 @@
 use crate::*;
 use serde::{Deserialize, Serialize};
-use serde_json::Map;
-use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::{Map, Value};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
@@ -46,12 +49,20 @@ pub enum TxError {
     TxNotCanonical,
     #[error("invalid_bic")]
     InvalidBic,
+    #[error("invalid_term")]
+    InvalidTerm,
     #[error("invalid_function")]
     InvalidFunction,
     #[error("invalid_hash")]
     InvalidHash,
     #[error("invalid_signature")]
     InvalidSignature,
+    #[error("missing_tx")]
+    MissingTx,
+    #[error("missing_signer")]
+    MissingSigner,
+    #[error("missing_signer_type")]
+    InvalidSignerType,
     #[error("nonce_not_integer")]
     NonceNotInteger,
     #[error("nonce_too_high")]
@@ -111,49 +122,104 @@ pub struct TxReturn {
 pub struct TX;
 
 impl TX {
-    // // normalize_atoms(txu):
-    // // Keep only tx_encoded/hash/signature and (if present) rebuild tx/actions,
+    fn term_to_bytes(term: &Term) -> Result<Vec<u8>, TxError> {
+        if let Term::Binary(bytes) = term {
+            Ok(bytes.clone())
+        } else {
+            Err(TxError::InvalidTerm)
+        }
+    }
     // // including attached_* only if both are present.
-    // pub fn normalize_atoms(mut txu: Txu) -> Txu {
-    //     let t = Txu {
-    //         tx_encoded: txu.tx_encoded.clone(),
-    //         hash: txu.hash.clone(),
-    //         signature: txu.signature.clone(),
-    //         tx: txu.tx.take().map(|orig_tx| {
-    //             let actions = orig_tx
-    //                 .actions
-    //                 .into_iter()
-    //                 .map(|a| {
-    //                     let keep_attachment =
-    //                         a.attached_symbol.is_some() && a.attached_amount.is_some();
-    //                     Action {
-    //                         op: a.op,
-    //                         contract: a.contract,
-    //                         function: a.function,
-    //                         args: a.args,
-    //                         attached_symbol: if keep_attachment {
-    //                             a.attached_symbol
-    //                         } else {
-    //                             None
-    //                         },
-    //                         attached_amount: if keep_attachment {
-    //                             a.attached_amount
-    //                         } else {
-    //                             None
-    //                         },
-    //                     }
-    //                 })
-    //                 .collect();
-    //             Tx {
-    //                 signer: orig_tx.signer,
-    //                 nonce: orig_tx.nonce,
-    //                 actions,
-    //             }
-    //         }),
-    //     };
-    //     t
-    // }
+    pub fn normalize_atoms(mut txu: HashMap<String, Term>) -> HashMap<String, Term> {
+        // Extract top-level fields
+        let tx_encoded = txu.remove("tx_encoded").unwrap_or(Term::Nil);
+        let hash = txu.remove("hash").unwrap_or(Term::Nil);
+        let signature = txu.remove("signature").unwrap_or(Term::Nil);
 
+        let mut t = HashMap::new();
+        t.insert("tx_encoded".to_string(), tx_encoded);
+        t.insert("hash".to_string(), hash);
+        t.insert("signature".to_string(), signature);
+
+        // Process "tx" if present
+        if let Some(Term::Map(tx_map)) = txu.remove("tx") {
+            // Convert BTreeMap<Term, Term> into HashMap<String, Term>
+            let tx: HashMap<String, Term> = tx_map
+                .into_iter() // consume BTreeMap
+                .filter_map(|(k, v)| {
+                    if let Term::Atom(s) = k {
+                        Some((s, v)) // move owned key & value
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let signer = tx.get("signer").cloned().unwrap_or(Term::Nil);
+            let nonce = tx.get("nonce").cloned().unwrap_or(Term::Nil);
+
+            let actions = match tx.get("actions") {
+                Some(Term::List(list)) => list
+                    .into_iter() // consume list, own elements
+                    .map(|action_term| {
+                        if let Term::Map(action_map) = action_term {
+                            let action: HashMap<String, Term> = action_map
+                                .iter()
+                                .filter_map(|(k, v)| {
+                                    if let Term::Atom(s) = k {
+                                        Some((s.clone(), v.clone()))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+
+                            let op = action.get("op").cloned().unwrap_or(Term::Nil);
+                            let contract = action.get("contract").cloned().unwrap_or(Term::Nil);
+                            let function = action.get("function").cloned().unwrap_or(Term::Nil);
+                            let args = action.get("args").cloned().unwrap_or(Term::Nil);
+
+                            let attached_symbol = action.get("attached_symbol").cloned();
+                            let attached_amount = action.get("attached_amount").cloned();
+                            let keep_attachment =
+                                attached_symbol.is_some() && attached_amount.is_some();
+
+                            let mut new_action = BTreeMap::new();
+                            new_action.insert(Term::Atom("op".to_string()), op);
+                            new_action.insert(Term::Atom("contract".to_string()), contract);
+                            new_action.insert(Term::Atom("function".to_string()), function);
+                            new_action.insert(Term::Atom("args".to_string()), args);
+
+                            if keep_attachment {
+                                new_action.insert(
+                                    Term::Atom("attached_symbol".to_string()),
+                                    attached_symbol.unwrap(),
+                                );
+                                new_action.insert(
+                                    Term::Atom("attached_amount".to_string()),
+                                    attached_amount.unwrap(),
+                                );
+                            }
+
+                            Term::Map(new_action)
+                        } else {
+                            Term::Nil
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            };
+
+            let mut new_tx = BTreeMap::new();
+            new_tx.insert(Term::Atom("signer".to_string()), signer);
+            new_tx.insert(Term::Atom("nonce".to_string()), nonce);
+            new_tx.insert(Term::Atom("actions".to_string()), Term::List(actions));
+
+            t.insert("tx".to_string(), Term::Map(new_tx));
+        }
+
+        t
+    }
     // // validate(tx_packed, is_special_meeting_block \\ false)
     // // Returns Ok(txu) on success, Err(TxError) on failure.
     pub fn validate(tx_packed: &[u8], is_special_meeting_block: bool) -> TxResult<Txu> {
@@ -163,66 +229,209 @@ impl TX {
             return Err(TxError::TooLarge);
         }
 
-        // txu = VanillaSer.decode!(tx_packed)
-        let (_, txu_raw) = VanillaSer::decode(tx_packed).unwrap();
+        let txu_raw = VanillaSer::decode(tx_packed).unwrap();
 
-        // let mut txu = Map::new();
-        // for key in ["tx_encoded", "hash", "signature"] {
-        //     if let Some(v) = txu_raw.get(key).cloned() {
-        //         txu.insert(key.to_string(), v);
-        //     }
-        // }
+        // Step 2: pick wanted top-level keys
+        let wanted_keys = ["tx_encoded", "hash", "signature"];
+        let mut txu: HashMap<String, Term> = HashMap::new();
 
-        // let mut txu = Map::new();
-        // for key in ["tx_encoded", "hash", "signature"] {
-        //     if let Some(v) = txu_raw.get(key).cloned() {
-        //         txu.insert(key.to_string(), v);
-        //     }
-        // }
+        if let Term::Map(m) = txu_raw {
+            for k in &wanted_keys {
+                let key = Term::Binary(k.as_bytes().to_vec());
+                if let Some(v) = m.get(&key) {
+                    txu.insert(k.to_string(), v.clone());
+                }
+            }
+        } else {
+            return Err(TxError::Unknown);
+        }
 
-        // let temp = VanillaSer::decode(txu_raw).unwrap();
+        // Step 3: fetch tx_encoded and decode
+        let tx_encoded_bytes = match txu.get("tx_encoded") {
+            Some(Term::Binary(b)) => b.clone(),
+            _ => return Err(TxError::Unknown),
+        };
+        let tx_raw = VanillaSer::decode(&tx_encoded_bytes).unwrap();
 
-        // let tx_encoded = txu_raw.tx_encoded.clone();
-        // let mut tx: Tx = VanillaSer::decode(&tx_encoded);
+        // Step 4: pick tx fields
+        let tx_wanted = ["signer", "nonce", "actions"];
+        let mut tx: BTreeMap<Term, Term> = BTreeMap::new();
+        if let Term::Map(m) = tx_raw {
+            for k in &tx_wanted {
+                let key = Term::Binary(k.as_bytes().to_vec());
+                if let Some(v) = m.get(&key) {
+                    tx.insert(key.clone(), v.clone());
+                }
+            }
+        } else {
+            return Err(TxError::Unknown);
+        }
 
-        // // Normalize actions: keep only specific keys and Optional attachments
-        // let actions: Vec<Action> = tx
-        //     .actions
-        //     .into_iter()
-        //     .map(|a| Action {
-        //         op: a.op,
-        //         contract: a.contract,
-        //         function: a.function,
-        //         args: a.args,
-        //         attached_symbol: a.attached_symbol,
-        //         attached_amount: a.attached_amount,
-        //     })
-        //     .collect();
+        // Step 5: filter actions
+        if let Some(Term::List(actions_list)) = tx.get(&Term::Binary(b"actions".to_vec())) {
+            let action_keys = [
+                "op",
+                "contract",
+                "function",
+                "args",
+                "attached_symbol",
+                "attached_amount",
+            ];
+            let mut filtered_actions = Vec::new();
 
-        // tx.actions = actions;
-        // txu_raw.tx = Some(tx.clone());
+            for action in actions_list {
+                if let Term::Map(a_map) = action {
+                    let mut filtered_map = BTreeMap::new();
+                    for key_str in &action_keys {
+                        let key = Term::Binary(key_str.as_bytes().to_vec());
+                        if let Some(v) = a_map.get(&key) {
+                            filtered_map.insert(key.clone(), v.clone());
+                        }
+                    }
+                    filtered_actions.push(Term::Map(filtered_map));
+                }
+            }
 
-        // let hash = txu_raw.hash.clone();
-        // let signature = txu_raw.signature.clone();
+            tx.insert(
+                Term::Binary(b"actions".to_vec()),
+                Term::List(filtered_actions),
+            );
+        }
 
-        // // normalize_atoms(txu)
-        // let mut txu = TX::normalize_atoms(txu_raw);
+        // Step 6: insert tx into txu
+        txu.insert("tx".to_string(), Term::Map(tx.clone()));
 
-        // // canonical check
-        // let canonical = Canonical {
-        //     tx_encoded: VanillaSer::encode(txu.tx.as_ref().unwrap()),
-        //     hash: hash.clone(),
-        //     signature: signature.clone(),
-        // };
-        // let canonical_bytes = VanillaSer::encode(&canonical);
-        // if tx_packed != canonical_bytes {
-        //     return Err(TxError::TxNotCanonical);
-        // }
+        // Step 7: fetch hash and signature
+        let hash = txu.get("hash").ok_or("missing hash").unwrap();
+        let signature = txu.get("signature").ok_or("missing signature").unwrap();
 
-        // // hash check
-        // if hash != blake3_hash(&txu.tx_encoded) {
-        //     return Err(TxError::InvalidHash);
-        // }
+        let txu = Self::normalize_atoms(txu);
+
+        let mut inner_map = HashMap::new();
+        inner_map.insert(
+            "tx_encoded".to_string(),
+            Term::Binary(VanillaSer::encode(&Term::Map(tx.clone()))),
+        );
+        inner_map.insert("hash".to_string(), hash.clone()); // Term::Binary or whatever type hash is
+        inner_map.insert("signature".to_string(), signature.clone());
+
+        let mut btree = BTreeMap::new();
+        for (k, v) in inner_map.into_iter() {
+            btree.insert(Term::Atom(k), v); // key must be Term::Atom
+        }
+
+        // Wrap as Term::Map
+        let canonical_term = Term::Map(btree);
+
+        // Encode using VanillaSer
+        let canonical: Vec<u8> = VanillaSer::encode(&canonical_term);
+
+        if tx_packed != canonical.as_slice() {
+            return Err(TxError::TxNotCanonical);
+        };
+
+        if let Term::Binary(ref hash_bytes) = hash {
+            let tx_btree = {
+                let mut map = BTreeMap::new();
+                for (k, v) in tx.clone().into_iter() {
+                    // k: Term, v: Term
+                    map.insert(k, v); // insert directly
+                }
+                Term::Map(map)
+            };
+
+            let computed_hash = blake3::hash(&VanillaSer::encode(&tx_btree));
+
+            if hash_bytes != computed_hash.as_bytes() {
+                return Err(TxError::InvalidHash);
+            }
+        } else {
+            return Err(TxError::InvalidHash);
+        };
+
+        // Extract signer_bytes, signature, and hash as &[u8]
+        let signer_bytes: &[u8] = if let Some(Term::Map(tx_map)) = txu.get("tx") {
+            if let Some(Term::Binary(bytes)) = tx_map.get(&Term::Atom("signer".to_string())) {
+                bytes.as_slice()
+            } else {
+                return Err(TxError::InvalidSignerType);
+            }
+        } else {
+            return Err(TxError::MissingTx);
+        };
+
+        let sig_bytes: &[u8] = if let Term::Binary(bytes) = &signature {
+            bytes.as_slice()
+        } else {
+            return Err(TxError::InvalidSignature);
+        };
+
+        let msg_bytes: &[u8] = if let Term::Binary(bytes) = &hash {
+            bytes.as_slice()
+        } else {
+            return Err(TxError::InvalidHash);
+        };
+
+        // Verify signature
+        if !BlsRs::verify(signer_bytes, sig_bytes, msg_bytes, BLS12AggSig::DST_TX) {
+            return Err(TxError::InvalidSignature);
+        };
+
+        let tx_map = match txu.get("tx") {
+            Some(Term::Map(map)) => map,
+            _ => return Err(TxError::ActionsMustBeList), // or another error
+        };
+
+        // Validate nonce
+        let nonce = match tx_map.get(&Term::Atom("nonce".to_string())) {
+            Some(Term::Int(n)) => *n,
+            _ => return Err(TxError::NonceNotInteger),
+        };
+
+        if nonce > 99_999_999_999_999_999_999 {
+            return Err(TxError::NonceTooHigh);
+        }
+
+        // Validate actions
+        let actions = match tx_map.get(&Term::Atom("actions".to_string())) {
+            Some(Term::List(list)) => list,
+            _ => return Err(TxError::ActionsMustBeList),
+        };
+
+        if actions.len() != 1 {
+            return Err(TxError::ActionsLengthMustBe1);
+        }
+
+        // Get first action
+        let action = &actions[0];
+
+        let action_map = match action {
+            Term::Map(map) => map,
+            _ => return Err(TxError::OpMustBeCall), // fallback
+        };
+
+        // Helper to get string fields from Term::Binary
+        let get_str = |key: &str| -> Result<&Vec<u8>, TxError> {
+            match action_map.get(&Term::Atom(key.to_string())) {
+                Some(Term::Binary(bytes)) => Ok(bytes),
+                _ => Err(match key {
+                    "contract" => TxError::ContractMustBeBinary,
+                    "function" => TxError::FunctionMustBeBinary,
+                    _ => TxError::OpMustBeCall,
+                }),
+            }
+        };
+
+        // Validate op
+        match action_map.get(&Term::Atom("op".to_string())) {
+            Some(Term::Binary(op_bytes)) => {
+                if op_bytes != b"call" {
+                    return Err(TxError::OpMustBeCall);
+                }
+            }
+            _ => return Err(TxError::OpMustBeCall),
+        };
+
 
         // // signature check
         // let tx_ref = txu.tx.as_ref().ok_or(TxError::Unknown)?;
