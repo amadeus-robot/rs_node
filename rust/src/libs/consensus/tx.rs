@@ -2,7 +2,7 @@ use crate::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -403,7 +403,7 @@ impl TX {
         }
 
         // Get first action
-        let action = &actions[0];
+        let action: &Term = &actions[0];
 
         let action_map = match action {
             Term::Map(map) => map,
@@ -432,92 +432,102 @@ impl TX {
             _ => return Err(TxError::OpMustBeCall),
         };
 
+        let epoch: u64 = Consensus::chain_epoch();
 
-        // // signature check
-        // let tx_ref = txu.tx.as_ref().ok_or(TxError::Unknown)?;
-        // if !env.bls_verify(tx_ref.signer.as_bytes(), &txu.signature, &txu.hash) {
-        //     return Err(TxError::InvalidSignature);
-        // }
+        let args = match action_map.get(&Term::Atom("args".to_string())) {
+            Some(Term::List(xs)) => {
+                let mut out = Vec::new();
+                for t in xs {
+                    match t {
+                        Term::Binary(b) => out.push(b.clone()),
+                        _ => return Err(TxError::ArgMustBeBinary),
+                    }
+                }
+                out
+            }
+            _ => vec![],
+        };
 
-        // // nonce checks
-        // // (In Elixir: is_integer nonce; here it's typed u128 so it's integer by type)
-        // let nonce = tx_ref.nonce;
-        // if nonce > 99_999_999_999_999_999_999u128 {
-        //     return Err(TxError::NonceTooHigh);
-        // }
+        let contract = match action_map.get(&Term::Atom("contract".to_string())) {
+            Some(Term::Binary(b)) => String::from_utf8_lossy(b).to_string(),
+            _ => return Err(TxError::InvalidContractOrFunction),
+        };
 
-        // // actions checks
-        // let actions_ref = &tx_ref.actions;
-        // if actions_ref.is_empty() {
-        //     return Err(TxError::ActionsMustBeList);
-        // }
-        // if actions_ref.len() != 1 {
-        //     return Err(TxError::ActionsLengthMustBe1);
-        // }
-        // let action = &actions_ref[0];
+        let attached_symbol = match action_map.get(&Term::Atom("attached_symbol".to_string())) {
+            Some(Term::Binary(b)) => Some(b.clone()),
+            None => None,
+            _ => return Err(TxError::AttachedSymbolMustBeBinary),
+        };
 
-        // if action.op != "call" {
-        //     return Err(TxError::OpMustBeCall);
-        // }
-        // // contract/function binary checks => here both are Strings; consider non-empty
-        // if action.contract.is_empty() {
-        //     return Err(TxError::ContractMustBeBinary);
-        // }
-        // if action.function.is_empty() {
-        //     return Err(TxError::FunctionMustBeBinary);
-        // }
+        // --- attached_amount ---
+        let attached_amount = match action_map.get(&Term::Atom("attached_amount".to_string())) {
+            Some(Term::Binary(b)) => Some(b.clone()),
+            None => None,
+            _ => return Err(TxError::AttachedAmountMustBeBinary),
+        };
 
-        // // args must be list of binaries
-        // // (already Vec<Vec<u8>> so type ensures list; ensure each arg is binary)
-        // for arg in &action.args {
-        //     if arg.is_empty() {
-        //         // In Elixir: "is_binary" (empty is allowed there, but we keep parity by not failing on empty)
-        //         // If you want to forbid empty, uncomment next line:
-        //         // return Err(TxError::ArgMustBeBinary);
-        //     }
-        // }
+        let function = match action_map.get(&Term::Atom("function".to_string())) {
+            Some(Term::Binary(b)) => String::from_utf8_lossy(b).to_string(),
+            _ => return Err(TxError::InvalidContractOrFunction),
+        };
 
-        // // contract/function validity
-        // let core_ok = (action.contract == "Epoch"
-        //     || action.contract == "Coin"
-        //     || action.contract == "Contract")
-        //     && (action.function == "submit_sol"
-        //         || action.function == "transfer"
-        //         || action.function == "set_emission_address"
-        //         || action.function == "slash_trainer"
-        //         || action.function == "deploy");
+        let allowed_contracts: HashSet<&str> = ["Epoch", "Coin", "Contract"].into_iter().collect();
+        let allowed_functions: HashSet<&str> = [
+            "submit_sol",
+            "transfer",
+            "set_emission_address",
+            "slash_trainer",
+            "deploy",
+        ]
+        .into_iter()
+        .collect();
 
-        // let is_valid_contract = core_ok || env.bls_validate_public_key(&action.contract);
-        // if !is_valid_contract {
-        //     return Err(TxError::InvalidContractOrFunction);
-        // }
+        if (allowed_contracts.contains(contract.as_str())
+            && allowed_functions.contains(function.as_str()))
+            || validate_public_key(&contract)
+        {
+            // ok
+        } else {
+            return Err(TxError::InvalidContractOrFunction);
+        }
 
-        // // special meeting block rules
-        // if is_special_meeting_block {
-        //     if action.contract != "Epoch" {
-        //         return Err(TxError::InvalidModuleForSpecialMeeting);
-        //     }
-        //     if action.function != "slash_trainer" {
-        //         return Err(TxError::InvalidFunctionForSpecialMeeting);
-        //     }
-        // }
+        // special meeting block
+        if is_special_meeting_block {
+            if contract != "Epoch" {
+                return Err(TxError::InvalidModuleForSpecialMeeting);
+            }
+            if function != "slash_trainer" {
+                return Err(TxError::InvalidFunctionForSpecialMeeting);
+            }
+        }
 
-        // // attachment checks
-        // if let Some(sym) = &action.attached_symbol {
-        //     // "must be binary" satisfied by type; enforce size 1..32
-        //     let len = sym.len();
-        //     if len < 1 || len > 32 {
-        //         return Err(TxError::AttachedSymbolWrongSize);
-        //     }
-        // }
-        // if action.attached_symbol.is_some() && action.attached_amount.is_none() {
-        //     return Err(TxError::AttachedAmountMustBeIncluded);
-        // }
-        // if action.attached_amount.is_some() && action.attached_symbol.is_none() {
-        //     return Err(TxError::AttachedSymbolMustBeIncluded);
-        // }
+        // attachment size checks
+        if let Some(symbol) = &attached_symbol {
+            if symbol.is_empty() || symbol.len() > 32 {
+                return Err(TxError::AttachedSymbolWrongSize);
+            }
+        }
+        if let Some(amount) = &attached_amount {
+            if amount.is_empty() {
+                return Err(TxError::AttachedAmountMustBeBinary);
+            }
+        }
 
-        // Ok(txu)
+        if attached_symbol.is_some() && attached_amount.is_none() {
+            return Err(TxError::AttachedAmountMustBeIncluded);
+        }
+        if attached_amount.is_some() && attached_symbol.is_none() {
+            return Err(TxError::AttachedSymbolMustBeIncluded);
+        }
+
+        let txu: Txu = Txu {
+            hash,
+            signature,
+            tx,
+            tx_encoded,
+        };
+
+        Ok(txu)
     }
 
     // // build(sk, contract, function, args, nonce \\ nil, attached_symbol \\ nil, attached_amount \\ nil)
@@ -677,9 +687,7 @@ impl TX {
     }
 
     pub fn unpack(tx_packed: &[u8]) -> Txu {
-        // Decode outer Canonical structure directly
-        let (term, txu): (Term, &[u8]) =
-            VanillaSer::decode(tx_packed).expect("Failed to decode tx_packed");
+        let term: Term = VanillaSer::decode(tx_packed).expect("Failed to decode tx_packed");
 
         if let Term::Binary(inner_bytes) = term {
             bincode::deserialize::<Txu>(&inner_bytes).expect("Failed to deserialize Txu")

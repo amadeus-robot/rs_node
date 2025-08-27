@@ -120,12 +120,20 @@ impl Consensus {
         trainers[index].clone()
     }
 
-    pub fn chain_height() {}
+    pub fn chain_height() -> u64 {
+        let entry = Self::chain_tip_entry();
 
-    pub fn chain_epoch() {}
+        entry.header_unpacked.height
+    }
+
+    pub fn chain_epoch() -> u64 {
+        Self::chain_tip_entry().header_unpacked.height / 100_000
+    }
 
     pub fn chain_tip_entry() -> Entry {
-        Entry::unpack(None)
+        //  ADD GET FABRIC FROM DB
+
+        Entry::unpack(None).unwrap()
     }
 
     // pub fn apply_entry_1(
