@@ -37,3 +37,7 @@ bls12_381 = "0.8.0"
 reed-solomon-simd = "3.0.1"
 sha2 = "0.10.9"
 group = "0.13.0"
+
+wasmer = "5.0.4"
+wasmer-compiler-singlepass = "5.0.4"
+wasmer-middlewares = "5.0.4"

@@ -4,6 +4,29 @@ use std::collections::HashMap;
 
 use crate::*;
 
+#[derive(Debug, thiserror::Error)]
+pub enum EntryError {
+    #[error("TEMPORARY_txs_only_100_per_entry")]
+    TooManyTxs,
+    #[error("prev_hash_not_256_bits")]
+    PrevHashNot256Bits,
+    #[error("dr_not_256_bits")]
+    DrNot256Bits,
+    #[error("vr_not_96_bytes")]
+    VrNot96Bytes,
+    #[error("signer_not_48_bytes")]
+    SignerNot48Bytes,
+    #[error("txs_hash_not_256_bits")]
+    TxsHashNot256Bits,
+    #[error("mask_not_bitstring")]
+    MaskNotBitstring,
+    #[error("txs_hash_invalid")]
+    TxsHashInvalid,
+
+    #[error("unknown")]
+    Unknown,
+}
+
 // Entry header and entry structs
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntryHeader {
@@ -90,19 +113,53 @@ impl Entry {
         Ok(())
     }
 
-    pub fn validate_entry(&self) -> Result<(), &'static str> {
-        let eh = &self.header_unpacked;
+    pub fn validate_entry(e: &Entry) -> Result<(), EntryError> {
+        let eh = &e.header_unpacked;
 
-        if eh.txs_hash != blake3::hash(&self.txs.concat()).as_bytes() {
-            return Err("txs_hash_invalid");
-        }
-        if self.txs.len() > 100 {
-            return Err("too_many_txs");
+        if e.txs.len() > 100 {
+            return Err(EntryError::TooManyTxs);
         }
 
-        for tx in &self.txs {
-            TX::validate(tx, self.mask.is_some())?;
+        if eh.prev_hash.len() != 32 {
+            return Err(EntryError::PrevHashNot256Bits);
         }
+        if eh.dr.len() != 32 {
+            return Err(EntryError::DrNot256Bits);
+        }
+        if eh.vr.len() != 96 {
+            return Err(EntryError::VrNot96Bytes);
+        }
+        if eh.signer.len() != 48 {
+            return Err(EntryError::SignerNot48Bytes);
+        }
+        if eh.txs_hash.len() != 32 {
+            return Err(EntryError::TxsHashNot256Bits);
+        }
+
+        if let Some(mask) = &e.mask {
+            if mask.is_empty() {
+                return Err(EntryError::MaskNotBitstring);
+            }
+        }
+
+        let mut txs_concat = Vec::new();
+        for tx in &e.txs {
+            txs_concat.extend_from_slice(tx);
+        }
+        let txs_hash = blake3::hash(&txs_concat).as_bytes().to_vec();
+        if eh.txs_hash != txs_hash {
+            return Err(EntryError::TxsHashInvalid);
+        }
+
+        let is_special_meeting_block = e.mask.is_some();
+
+        for tx in &e.txs {
+            let res = TX::validate(tx, is_special_meeting_block); // define TX.validate
+            if let Err(err) = res {
+                return Err(EntryError::Unknown); // map specific errors as needed
+            }
+        }
+
         Ok(())
     }
 

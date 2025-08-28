@@ -106,8 +106,8 @@ impl BlsRs {
         Ok((pk_g1 * sk).to_affine().to_compressed().to_vec())
     }
 
-    pub fn validate_public_key(public_key: &[u8]) -> Result<(), CryptoError> {
-        Self::parse_public_key(public_key).map(|_| ())
+    pub fn validate_public_key(public_key: &[u8]) -> bool {
+        Self::parse_public_key(public_key).is_ok()
     }
 
     /* ---------- Internal Helpers ---------- */

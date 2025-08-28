@@ -97,7 +97,6 @@ impl Fabric {
             cf_map.insert(name, handle.clone());
         }
 
-        // Build Fabric struct
         let fabric = Fabric {
             db: db_static,
             cf: cf_map,

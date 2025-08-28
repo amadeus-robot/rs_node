@@ -16,6 +16,7 @@ pub mod external;
 pub mod http;
 pub mod misc;
 pub mod node;
+pub mod trainer;
 pub mod utils;
 pub use bic::*;
 pub use consensus::*;
@@ -23,6 +24,7 @@ pub use external::*;
 pub use http::*;
 pub use misc::*;
 pub use node::*;
+pub use trainer::*;
 pub use utils::*;
 
 pub struct AmaApp {

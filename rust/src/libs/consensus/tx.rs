@@ -251,6 +251,14 @@ impl TX {
             Some(Term::Binary(b)) => b.clone(),
             _ => return Err(TxError::Unknown),
         };
+        let hash_bytes = match txu.get("hash") {
+            Some(Term::Binary(b)) => b.clone(),
+            _ => return Err(TxError::Unknown),
+        };
+        let signature_bytes = match txu.get("signature") {
+            Some(Term::Binary(b)) => b.clone(),
+            _ => return Err(TxError::Unknown),
+        };
         let tx_raw = VanillaSer::decode(&tx_encoded_bytes).unwrap();
 
         // Step 4: pick tx fields
@@ -305,7 +313,7 @@ impl TX {
         let hash = txu.get("hash").ok_or("missing hash").unwrap();
         let signature = txu.get("signature").ok_or("missing signature").unwrap();
 
-        let txu = Self::normalize_atoms(txu);
+        let txu = Self::normalize_atoms(txu.clone());
 
         let mut inner_map = HashMap::new();
         inner_map.insert(
@@ -330,7 +338,7 @@ impl TX {
             return Err(TxError::TxNotCanonical);
         };
 
-        if let Term::Binary(ref hash_bytes) = hash {
+        if let Term::Binary(hash_bytes) = hash {
             let tx_btree = {
                 let mut map = BTreeMap::new();
                 for (k, v) in tx.clone().into_iter() {
@@ -382,9 +390,8 @@ impl TX {
             _ => return Err(TxError::ActionsMustBeList), // or another error
         };
 
-        // Validate nonce
         let nonce = match tx_map.get(&Term::Atom("nonce".to_string())) {
-            Some(Term::Int(n)) => *n,
+            Some(Term::Int(n)) => *n as u128,
             _ => return Err(TxError::NonceNotInteger),
         };
 
@@ -484,7 +491,7 @@ impl TX {
 
         if (allowed_contracts.contains(contract.as_str())
             && allowed_functions.contains(function.as_str()))
-            || validate_public_key(&contract)
+            || BlsRs::validate_public_key(&contract.as_bytes())
         {
             // ok
         } else {
@@ -521,10 +528,29 @@ impl TX {
         }
 
         let txu: Txu = Txu {
-            hash,
-            signature,
-            tx,
-            tx_encoded,
+            hash: hash_bytes,
+            signature: signature_bytes,
+            tx : Some(Tx {
+                signer: String::from_utf8_lossy(signer_bytes).to_string(),
+                nonce : nonce,
+                actions: vec![Action {
+                    op: "call".to_string(),
+                    contract,
+                    function,
+                    args,
+                    attached_symbol: attached_symbol
+                        .map(|b| String::from_utf8_lossy(&b).to_string()),
+                    attached_amount: attached_amount.and_then(|b| {
+                        if b.len() == 8 {
+                            let arr: [u8; 8] = b.try_into().ok()?;
+                            Some(i64::from_le_bytes(arr))
+                        } else {
+                            None
+                        }
+                    }),
+                }],
+            }),
+            tx_encoded: tx_encoded_bytes,
         };
 
         Ok(txu)
