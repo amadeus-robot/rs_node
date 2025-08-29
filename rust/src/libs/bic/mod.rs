@@ -1,10 +1,12 @@
 pub mod base;
 pub mod coin;
 pub mod contract;
+pub mod epoch;
 pub mod wasm;
 pub mod wasm_safe;
 pub use base::*;
 pub use coin::*;
 pub use contract::*;
+pub use epoch::*;
 pub use wasm::*;
 pub use wasm_safe::*;
