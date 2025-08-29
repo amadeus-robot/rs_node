@@ -16,7 +16,7 @@ quorum = 3
 work_folder = "~/.cache/amadeusd"  # default path, can be overridden by WORKFOLDER env
 
 # Offline mode
-offline = false                     # set true via OFFLINE env
+offline = true                     # set true via OFFLINE env
 
 # Network
 http_ipv4 = "0.0.0.0"
