@@ -11,8 +11,7 @@ impl WASM_SAFE {
         function: String,
         args: Vec<String>,
     ) {
-
-        WasmerRs::exec(&mapenv, &wasmbytes, &function, &args);
+        WasmerRs::call(mapenv, wasmbytes, function, args);
         // match wasmer_ex_call(parent_tx.clone(), mapenv, &wasmbytes, &function, &args).await {
         //     WasmerResult::Error(reason) => {
         //         let _ = parent_tx.send((reason, vec![], 0, None)).await;
