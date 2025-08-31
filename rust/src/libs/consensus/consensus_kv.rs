@@ -29,10 +29,7 @@ pub enum Mutation {
 pub struct ConsensusKV;
 
 impl ConsensusKV {
-    pub fn kv_put(
-        key: Vec<u8>,
-        value: Vec<u8>,
-    ) -> Result<(), rocksdb::Error> {
+    pub fn kv_put(key: Vec<u8>, value: Vec<u8>) -> Result<(), rocksdb::Error> {
         // let fabric = FABRIC_DB.read().unwrap();
         // let fabric = fabric.as_ref().expect("Fabric not initialized");
 
@@ -65,7 +62,7 @@ impl ConsensusKV {
     }
 
     pub fn kv_increment(key: Vec<u8>, value: i64) -> Result<(), rocksdb::Error> {
-    // pub fn kv_increment(key: Vec<u8>, value: i64) -> Result<i64, rocksdb::Error> {
+        // pub fn kv_increment(key: Vec<u8>, value: i64) -> Result<i64, rocksdb::Error> {
         // let fabric = FABRIC_DB.read().unwrap();
         // let fabric = fabric.as_ref().expect("Fabric not initialized");
 

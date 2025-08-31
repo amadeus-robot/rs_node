@@ -48,3 +48,4 @@ wasmer_rs = { git = "https://github.com/amadeus-robot/wasmer_ex.git", package = 
 wasmer = "5.0.4"
 wasmer-compiler-singlepass = "5.0.4"
 wasmer-middlewares = "5.0.4"
+crypto = "0.5.1"

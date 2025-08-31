@@ -28,13 +28,22 @@ pub struct AmaConfig {
     pub othernodes: Vec<String>,
     pub trustfactor: f64,
 
-    pub trainer_pk: Vec<u8>,
     pub trainer_sk: Vec<u8>,
     // Optional flags
     pub archival_node: bool,
     pub autoupdate: bool,
     pub computor_type: ComputorType,
     pub snapshot_height: u64,
+}
+
+impl AmaConfig {
+    pub fn trainer_pk(&self) -> Vec<u8> {
+        BlsRs::get_public_key(&self.trainer_sk).unwrap()
+    }
+
+    pub fn trainer_pop(&self) -> Vec<u8> {
+        BlsRs::sign(&self.trainer_sk, &self.trainer_pk(), BLS12AggSig::DST_POP).unwrap()
+    }
 }
 
 // pub AMACONFIG : AmaConfig= CONFIG.

@@ -27,7 +27,7 @@ impl Attestation {
     pub fn sign(entry_hash: [u8; 32], mutations_hash: [u8; 32]) -> Self {
         // Fetch from config or env
         let sk_bytes = CONFIG.ama.trainer_sk.clone();
-        let pk_bytes = CONFIG.ama.trainer_pk.clone();
+        let pk_bytes = CONFIG.ama.trainer_pk().clone();
 
         let mut msg = Vec::new();
         msg.extend_from_slice(&entry_hash);

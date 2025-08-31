@@ -1,10 +1,10 @@
 pub mod jcs;
-// pub mod temp_rocksdb;
+pub mod rocks_db;
 pub mod util;
 pub mod vanillaser;
 pub mod vanity_generator;
 pub use jcs::*;
-// pub use temp_rocksdb::*;
+pub use rocks_db::*;
 pub use util::*;
 pub use vanillaser::*;
 pub use vanity_generator::*;

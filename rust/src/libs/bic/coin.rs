@@ -6,7 +6,7 @@ impl Coin {
     pub const DECIMALS: u32 = 9;
     pub const BURN_ADDRESS: &'static str = "000000000000000000000000000000000000000000000000";
 
-    pub fn to_flat(coins: i64) -> i64 {
+    pub const fn to_flat(coins: i64) -> i64 {
         coins * 1_000_000_000
     }
 

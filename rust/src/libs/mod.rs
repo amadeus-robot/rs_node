@@ -46,7 +46,7 @@ impl AmaApp {
     async fn spawn_child_tasks(&self) {
         // Examples of child tasks
         task::spawn(async {
-            // ComputorGen::start_link();
+            ComputorGen::start_link();
             println!("ComputorGen started");
         });
 
