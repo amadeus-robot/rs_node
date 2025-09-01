@@ -295,4 +295,8 @@ impl Consensus {
     // })
 
     // }
+
+    pub fn chain_balance(pk: &Vec<u8>, symbol: Option<String>) -> u64 {
+        0
+    }
 }

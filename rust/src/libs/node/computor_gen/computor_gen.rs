@@ -1,117 +1,88 @@
+use crate::*;
+use futures_util::lock::Mutex;
+use rand::RngCore;
 use std::sync::Arc;
 use std::time::Duration;
-use futures_util::lock::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
-use tokio::time::sleep;
-
-use crate::*;
-
-#[derive(Debug)]
-pub struct ComputorState {
-    enabled: bool,
-    ctype: Option<String>,
-}
+use tokio::time::{interval, sleep};
 
 #[derive(Debug)]
 pub enum ComputorMessage {
-    Start(Option<String>),
+    Start(Option<ComputorType>),
     Stop,
     Tick,
 }
-
 pub struct ComputorGen {
-    state: ComputorState,
+    state: Arc<Mutex<ComputorState>>,
     sender: UnboundedSender<ComputorMessage>,
     receiver: UnboundedReceiver<ComputorMessage>,
 }
 
 impl ComputorGen {
+    /// Create new ComputorGen and return it
     pub fn start_link() -> Self {
-        let (sender, mut receiver) = unbounded_channel();
+        let (sender, receiver) = unbounded_channel();
         let state = Arc::new(Mutex::new(ComputorState {
             enabled: false,
-            ctype: None,
+            ctype: Some(ComputorType::None),
         }));
 
-        let state_clone = state.clone();
-        let sender_clone = sender.clone();
-
-        tokio::spawn(async move {
-            // Initial tick after 1 second
-            let s_clone = sender_clone.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                let _ = s_clone.send(ComputorMessage::Tick);
-            });
-
-            while let Some(msg) = receiver.recv().await {
-                let mut st = state_clone.lock().await;
-                match msg {
-                    ComputorMessage::Start(t) => {
-                        st.enabled = true;
-                        st.ctype = t;
-                    }
-                    ComputorMessage::Stop => {
-                        st.enabled = false;
-                    }
-                    ComputorMessage::Tick => {
-                        drop(st); // unlock before calling async tick
-                        ComputorGen::handle_tick().await;
-                    }
-                }
-            }
-        });
-
-        ComputorGen { state, sender }
+        ComputorGen {
+            state,
+            sender,
+            receiver,
+        }
     }
 
+    /// Access sender to send messages
     pub fn sender(&self) -> UnboundedSender<ComputorMessage> {
         self.sender.clone()
     }
 
-    async fn run(&mut self) {
-        // Initial tick after 1 second
-        let sender_clone = self.sender.clone();
+    /// Main async loop
+    pub async fn run(&mut self) {
+        let state = self.state.clone();
+        let sender = self.sender.clone();
+
+        // Spawn recurring tick task
         tokio::spawn(async move {
-            sleep(Duration::from_secs(1)).await;
-            let _ = sender_clone.send(ComputorMessage::Tick);
+            let mut interval = interval(Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+                let _ = sender.send(ComputorMessage::Tick);
+            }
         });
 
         while let Some(msg) = self.receiver.recv().await {
             match msg {
                 ComputorMessage::Start(t) => {
-                    self.state.enabled = true;
-                    self.state.ctype = t;
+                    let mut st = state.lock().await;
+                    st.enabled = true;
+                    st.ctype = t;
                 }
                 ComputorMessage::Stop => {
-                    self.state.enabled = false;
+                    let mut st = state.lock().await;
+                    st.enabled = false;
                 }
                 ComputorMessage::Tick => {
                     self.handle_tick().await;
-
-                    // Schedule next tick
-                    let sender_clone = self.sender.clone();
-                    tokio::spawn(async move {
-                        sleep(Duration::from_secs(1)).await;
-                        let _ = sender_clone.send(ComputorMessage::Tick);
-                    });
                 }
             }
         }
     }
 
-    async fn handle_tick(&mut self) {
-        if !self.state.enabled {
+    async fn handle_tick(&self) {
+        let st = self.state.lock().await;
+        if !st.enabled {
             return;
         }
+        drop(st); // unlock before async calls
 
-        // Simulate quorum check
-        if !fabric_sync_attest_gen::is_quorum_in_epoch().await {
+        if !FabricSyncAttestGen::is_quorum_in_epoch() {
             println!("🔴 cannot compute: out_of_sync");
             return;
         }
 
-        // Run computation
         self.tick().await;
     }
 
@@ -121,38 +92,38 @@ impl ComputorGen {
         let pk = AMACONFIG.trainer_pk();
         let pop = AMACONFIG.trainer_pop();
 
-        let coins = Consensus::chain_balance(&pk).await;
-        let epoch = Consensus::chain_epoch().await;
-        let has_exec_coins = coins >= Coin::to_cents(100);
+        let coins = Consensus::chain_balance(&pk, None);
+        let epoch = Consensus::chain_epoch();
+        let has_exec_coins = coins >= Coin::to_cents(100) as u64;
 
-        if (self.state.ctype.as_deref() == Some("trainer") && !has_exec_coins)
-            || self.state.ctype.is_none()
-        {
-            let sol = UPOW::compute_for(
+        let st = self.state.lock().await;
+        let is_trainer = matches!(st.ctype, Some(ComputorType::Trainer));
+        drop(st);
+
+        // Generate random bytes
+        let mut rand_bytes = [0u8; 96];
+        rand::thread_rng().fill_bytes(&mut rand_bytes);
+
+        if (is_trainer && !has_exec_coins) || self.state.lock().await.ctype.is_none() {
+            if let Some(sol) = UPOW::compute_for(
                 epoch,
-                EntryGenesis::signer(),
-                EntryGenesis::pop(),
+                &EntryGenesis::signer(),
+                &EntryGenesis::pop(),
                 &pk,
-                &crypto::strong_rand_bytes(96),
+                &rand_bytes,
                 100,
-            )
-            .await;
-
-            if let Some(sol) = sol {
+            ) {
                 println!("🔢 tensor matmul complete! broadcasting sol..");
                 NodeGen::broadcast("sol", "trainers", &[sol]);
             }
         } else {
-            let sol =
-                UPOW::compute_for(epoch, &pk, &pop, &pk, &crypto::strong_rand_bytes(96), 100).await;
-
-            if let Some(sol) = sol {
+            if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100).await {
                 let sk = AMACONFIG.trainer_sk;
                 let packed_tx = TX::build(&sk, "Epoch", "submit_sol", &[sol.clone()]);
                 let hash = TX::unpack(&packed_tx).hash;
                 println!("🔢 tensor matmul complete! tx {:?}", base58::encode(hash));
 
-                tx_pool::insert(packed_tx.clone());
+                TXPool::insert(packed_tx.clone());
                 NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]);
             }
         }
@@ -166,7 +137,7 @@ impl ComputorGen {
             "set_emission_address",
             &[to_address.to_string()],
         );
-        tx_pool::insert(packed_tx.clone());
+        TXPool::insert(packed_tx.clone());
         NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]);
     }
 }

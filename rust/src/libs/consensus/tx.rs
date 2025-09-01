@@ -530,9 +530,9 @@ impl TX {
         let txu: Txu = Txu {
             hash: hash_bytes,
             signature: signature_bytes,
-            tx : Some(Tx {
+            tx: Some(Tx {
                 signer: String::from_utf8_lossy(signer_bytes).to_string(),
-                nonce : nonce,
+                nonce: nonce,
                 actions: vec![Action {
                     op: "call".to_string(),
                     contract,
@@ -558,56 +558,55 @@ impl TX {
 
     // // build(sk, contract, function, args, nonce \\ nil, attached_symbol \\ nil, attached_amount \\ nil)
     // // -> packed bytes (like VanillaSer.encode(%{tx_encoded, hash, signature}))
-    // pub fn build(
-    //     env: &impl Env,
-    //     sk: &[u8],
-    //     contract: &str,
-    //     function: &str,
-    //     args: Vec<Vec<u8>>,
-    //     nonce: Option<u128>,
-    //     attached_symbol: Option<Vec<u8>>,
-    //     attached_amount: Option<Vec<u8>>,
-    // ) -> Vec<u8> {
-    //     let pk = env.bls_get_public_key(sk);
-    //     let nonce = nonce.unwrap_or_else(|| {
-    //         use std::time::{SystemTime, UNIX_EPOCH};
-    //         SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .unwrap()
-    //             .as_nanos()
-    //     });
+    pub fn build(
+        sk: &[u8],
+        contract: &str,
+        function: &str,
+        args: Vec<Vec<u8>>,
+        nonce: Option<u128>,
+        attached_symbol: Option<Vec<u8>>,
+        attached_amount: Option<Vec<u8>>,
+    ) -> Vec<u8> {
+        let pk = BlsRs::get_public_key(sk).unwrap();
+        let nonce = nonce.unwrap_or_else(|| {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        });
 
-    //     let mut action = Action {
-    //         op: "call".into(),
-    //         contract: contract.into(),
-    //         function: function.into(),
-    //         args,
-    //         attached_symbol: None,
-    //         attached_amount: None,
-    //     };
+        let mut action = Action {
+            op: "call".into(),
+            contract: contract.into(),
+            function: function.into(),
+            args,
+            attached_symbol: None,
+            attached_amount: None,
+        };
 
-    //     if attached_symbol.is_some() && attached_amount.is_some() {
-    //         action.attached_symbol = attached_symbol;
-    //         action.attached_amount = attached_amount;
-    //     }
+        if attached_symbol.is_some() && attached_amount.is_some() {
+            action.attached_symbol = attached_symbol;
+            action.attached_amount = attached_amount;
+        }
 
-    //     let tx = Tx {
-    //         signer: String::from_utf8_lossy(&pk).to_string(), // keep as String like Elixir Base58PK
-    //         nonce,
-    //         actions: vec![action],
-    //     };
+        let tx = Tx {
+            signer: String::from_utf8_lossy(&pk).to_string(), // keep as String like Elixir Base58PK
+            nonce,
+            actions: vec![action],
+        };
 
-    //     let tx_encoded = VanillaSer::encode(&tx);
-    //     let hash = blake3_hash(&tx_encoded);
-    //     let signature = env.bls_sign(sk, &hash);
+        let tx_encoded = VanillaSer::encode(&tx);
+        let hash = blake3_hash(&tx_encoded);
+        let signature = env.bls_sign(sk, &hash);
 
-    //     let outer = Canonical {
-    //         tx_encoded,
-    //         hash,
-    //         signature,
-    //     };
-    //     VanillaSer::encode(&outer)
-    // }
+        let outer = Canonical {
+            tx_encoded,
+            hash,
+            signature,
+        };
+        VanillaSer::encode(&outer)
+    }
 
     // // chain_valid(tx_packed) and chain_valid(txu)
     // pub fn chain_valid_packed(env: &impl Env, tx_packed: &[u8]) -> bool {
