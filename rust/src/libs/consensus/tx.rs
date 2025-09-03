@@ -597,7 +597,7 @@ impl TX {
         };
 
         let tx_encoded = VanillaSer::encode(&tx);
-        let hash = blake3_hash(&tx_encoded);
+        let hash = blake3::hash(&tx_encoded);
         let signature = env.bls_sign(sk, &hash);
 
         let outer = Canonical {
