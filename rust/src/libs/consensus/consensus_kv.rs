@@ -1,8 +1,7 @@
-use std::cell::RefCell;
-
 use blake3;
 use rocksdb::{MultiThreaded, Transaction, TransactionDB, WriteOptions};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 
 use crate::*;
 

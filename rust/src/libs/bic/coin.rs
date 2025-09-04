@@ -1,6 +1,11 @@
 use crate::*;
 
-pub struct Coin;
+pub enum Coin {
+    Transfer,
+    CreateAndMint,
+    Mint,
+    Pause,
+}
 
 impl Coin {
     pub const DECIMALS: u32 = 9;

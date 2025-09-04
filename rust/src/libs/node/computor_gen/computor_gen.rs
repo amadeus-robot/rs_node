@@ -1,4 +1,5 @@
 use crate::*;
+use bs58::encode;
 use futures_util::lock::Mutex;
 use rand::RngCore;
 use std::sync::Arc;
@@ -114,30 +115,35 @@ impl ComputorGen {
                 100,
             ) {
                 println!("🔢 tensor matmul complete! broadcasting sol..");
-                NodeGen::broadcast("sol", "trainers", &[sol]);
+                NodeGen::broadcast(BroadcastKind::Sol, "trainers", sol, self.sender.clone());
             }
         } else {
-            if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100).await {
+            if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100) {
                 let sk = AMACONFIG.trainer_sk;
                 let packed_tx = TX::build(&sk, "Epoch", "submit_sol", &[sol.clone()]);
                 let hash = TX::unpack(&packed_tx).hash;
                 println!("🔢 tensor matmul complete! tx {:?}", base58::encode(hash));
 
                 TXPool::insert(packed_tx.clone());
-                NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]);
+                NodeGen::broadcast(
+                    BroadcastKind::TxPool,
+                    "trainers",
+                    packed_tx,
+                    socket_sender.clone(),
+                );
             }
         }
     }
 
     pub async fn set_emission_address(to_address: &str) {
-        let sk = AMACONFIG.trainer_sk;
-        let packed_tx = TX::build(
-            &sk,
-            "Epoch",
-            "set_emission_address",
-            &[to_address.to_string()],
-        );
-        TXPool::insert(packed_tx.clone());
-        NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]);
+        // let sk = AMACONFIG.trainer_sk;
+        // let packed_tx = TX::build(
+        //     &sk,
+        //     "Epoch",
+        //     "set_emission_address",
+        //     &[to_address.to_string()],
+        // );
+        // TXPool::insert(packed_tx.clone());
+        // NodeGen::broadcast("txpool", "trainers", &[vec![packed_tx]]);
     }
 }

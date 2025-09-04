@@ -12,25 +12,20 @@ pub struct Action {
     pub contract: String,
     pub function: String,
     pub args: Vec<Vec<u8>>, // binaries in Elixir
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attached_symbol: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attached_amount: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tx {
-    pub signer: String, // Base58PK in Elixir; keep String
-    pub nonce: u128,    // nanoseconds can exceed u64
+    pub signer: String,
+    pub nonce: u128,
     pub actions: Vec<Action>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Txu {
-    // Elixir map has these top-level keys:
-    //  tx (decoded), tx_encoded, hash, signature
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tx: Option<Tx>,
+    pub tx: Tx,
     pub tx_encoded: Vec<u8>,
     pub hash: Vec<u8>,
     pub signature: Vec<u8>,
@@ -122,106 +117,6 @@ pub struct TxReturn {
 pub struct TX;
 
 impl TX {
-    fn term_to_bytes(term: &Term) -> Result<Vec<u8>, TxError> {
-        if let Term::Binary(bytes) = term {
-            Ok(bytes.clone())
-        } else {
-            Err(TxError::InvalidTerm)
-        }
-    }
-    // // including attached_* only if both are present.
-    pub fn normalize_atoms(mut txu: HashMap<String, Term>) -> HashMap<String, Term> {
-        // Extract top-level fields
-        let tx_encoded = txu.remove("tx_encoded").unwrap_or(Term::Nil);
-        let hash = txu.remove("hash").unwrap_or(Term::Nil);
-        let signature = txu.remove("signature").unwrap_or(Term::Nil);
-
-        let mut t = HashMap::new();
-        t.insert("tx_encoded".to_string(), tx_encoded);
-        t.insert("hash".to_string(), hash);
-        t.insert("signature".to_string(), signature);
-
-        // Process "tx" if present
-        if let Some(Term::Map(tx_map)) = txu.remove("tx") {
-            // Convert BTreeMap<Term, Term> into HashMap<String, Term>
-            let tx: HashMap<String, Term> = tx_map
-                .into_iter() // consume BTreeMap
-                .filter_map(|(k, v)| {
-                    if let Term::Atom(s) = k {
-                        Some((s, v)) // move owned key & value
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            let signer = tx.get("signer").cloned().unwrap_or(Term::Nil);
-            let nonce = tx.get("nonce").cloned().unwrap_or(Term::Nil);
-
-            let actions = match tx.get("actions") {
-                Some(Term::List(list)) => list
-                    .into_iter() // consume list, own elements
-                    .map(|action_term| {
-                        if let Term::Map(action_map) = action_term {
-                            let action: HashMap<String, Term> = action_map
-                                .iter()
-                                .filter_map(|(k, v)| {
-                                    if let Term::Atom(s) = k {
-                                        Some((s.clone(), v.clone()))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-
-                            let op = action.get("op").cloned().unwrap_or(Term::Nil);
-                            let contract = action.get("contract").cloned().unwrap_or(Term::Nil);
-                            let function = action.get("function").cloned().unwrap_or(Term::Nil);
-                            let args = action.get("args").cloned().unwrap_or(Term::Nil);
-
-                            let attached_symbol = action.get("attached_symbol").cloned();
-                            let attached_amount = action.get("attached_amount").cloned();
-                            let keep_attachment =
-                                attached_symbol.is_some() && attached_amount.is_some();
-
-                            let mut new_action = BTreeMap::new();
-                            new_action.insert(Term::Atom("op".to_string()), op);
-                            new_action.insert(Term::Atom("contract".to_string()), contract);
-                            new_action.insert(Term::Atom("function".to_string()), function);
-                            new_action.insert(Term::Atom("args".to_string()), args);
-
-                            if keep_attachment {
-                                new_action.insert(
-                                    Term::Atom("attached_symbol".to_string()),
-                                    attached_symbol.unwrap(),
-                                );
-                                new_action.insert(
-                                    Term::Atom("attached_amount".to_string()),
-                                    attached_amount.unwrap(),
-                                );
-                            }
-
-                            Term::Map(new_action)
-                        } else {
-                            Term::Nil
-                        }
-                    })
-                    .collect(),
-                _ => vec![],
-            };
-
-            let mut new_tx = BTreeMap::new();
-            new_tx.insert(Term::Atom("signer".to_string()), signer);
-            new_tx.insert(Term::Atom("nonce".to_string()), nonce);
-            new_tx.insert(Term::Atom("actions".to_string()), Term::List(actions));
-
-            t.insert("tx".to_string(), Term::Map(new_tx));
-        }
-
-        t
-    }
-    // // validate(tx_packed, is_special_meeting_block \\ false)
-    // // Returns Ok(txu) on success, Err(TxError) on failure.
     pub fn validate(tx_packed: &[u8], is_special_meeting_block: bool) -> TxResult<Txu> {
         let tx_size = CONFIG.ama.tx_size as usize;
         // size check
@@ -530,7 +425,7 @@ impl TX {
         let txu: Txu = Txu {
             hash: hash_bytes,
             signature: signature_bytes,
-            tx: Some(Tx {
+            tx: Tx {
                 signer: String::from_utf8_lossy(signer_bytes).to_string(),
                 nonce: nonce,
                 actions: vec![Action {
@@ -549,7 +444,7 @@ impl TX {
                         }
                     }),
                 }],
-            }),
+            },
             tx_encoded: tx_encoded_bytes,
         };
 
@@ -591,14 +486,14 @@ impl TX {
         }
 
         let tx = Tx {
-            signer: String::from_utf8_lossy(&pk).to_string(), // keep as String like Elixir Base58PK
+            signer: bs58::encode(pk).into_string(), // keep as String like Elixir Base58PK
             nonce,
             actions: vec![action],
         };
 
         let tx_encoded = VanillaSer::encode(&tx);
         let hash = blake3::hash(&tx_encoded);
-        let signature = env.bls_sign(sk, &hash);
+        let signature = BlsRs::sign(sk, &hash, BLS12AggSig::DST_TX);
 
         let outer = Canonical {
             tx_encoded,

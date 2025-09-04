@@ -1,6 +1,6 @@
-use rocksdb::{DB, Options, WriteBatch, IteratorMode, Direction, ColumnFamily, DBVector};
-use std::path::Path;
+use rocksdb::{ColumnFamily, DB, Direction, IteratorMode, Options, WriteBatch};
 use std::collections::HashMap;
+use std::path::Path;
 
 pub struct RocksDB {
     db: DB,
@@ -40,21 +40,29 @@ impl RocksDB {
 
     pub fn put(&self, key: &[u8], value: &[u8], cf: Option<&str>) {
         match cf {
-            Some(cf_name) => self.db.put_cf(self.cfs.get(cf_name).unwrap(), key, value).unwrap(),
+            Some(cf_name) => self
+                .db
+                .put_cf(self.cfs.get(cf_name).unwrap(), key, value)
+                .unwrap(),
             None => self.db.put(key, value).unwrap(),
         }
     }
 
     pub fn delete(&self, key: &[u8], cf: Option<&str>) {
         match cf {
-            Some(cf_name) => self.db.delete_cf(self.cfs.get(cf_name).unwrap(), key).unwrap(),
+            Some(cf_name) => self
+                .db
+                .delete_cf(self.cfs.get(cf_name).unwrap(), key)
+                .unwrap(),
             None => self.db.delete(key).unwrap(),
         }
     }
 
     pub fn get_prefix(&self, prefix: &[u8], cf: Option<&str>) -> Vec<(Vec<u8>, Vec<u8>)> {
         let iter = match cf {
-            Some(cf_name) => self.db.iterator_cf(self.cfs.get(cf_name).unwrap(), IteratorMode::Start),
+            Some(cf_name) => self
+                .db
+                .iterator_cf(self.cfs.get(cf_name).unwrap(), IteratorMode::Start),
             None => self.db.iterator(IteratorMode::Start),
         };
 
@@ -64,13 +72,24 @@ impl RocksDB {
             } else {
                 None
             }
-        }).collect()
+        })
+        .collect()
     }
 
-    pub fn get_next(&self, prefix: &[u8], key: &[u8], cf: Option<&str>) -> Option<(Vec<u8>, Vec<u8>)> {
+    pub fn get_next(
+        &self,
+        prefix: &[u8],
+        key: &[u8],
+        cf: Option<&str>,
+    ) -> Option<(Vec<u8>, Vec<u8>)> {
         let iter = match cf {
-            Some(cf_name) => self.db.iterator_cf(self.cfs.get(cf_name).unwrap(), IteratorMode::From(key, Direction::Forward)),
-            None => self.db.iterator(IteratorMode::From(key, Direction::Forward)),
+            Some(cf_name) => self.db.iterator_cf(
+                self.cfs.get(cf_name).unwrap(),
+                IteratorMode::From(key, Direction::Forward),
+            ),
+            None => self
+                .db
+                .iterator(IteratorMode::From(key, Direction::Forward)),
         };
 
         iter.filter(|(k, _)| k.starts_with(prefix))
@@ -79,10 +98,20 @@ impl RocksDB {
             .map(|(k, v)| (k.to_vec(), v.to_vec()))
     }
 
-    pub fn get_prev(&self, prefix: &[u8], key: &[u8], cf: Option<&str>) -> Option<(Vec<u8>, Vec<u8>)> {
+    pub fn get_prev(
+        &self,
+        prefix: &[u8],
+        key: &[u8],
+        cf: Option<&str>,
+    ) -> Option<(Vec<u8>, Vec<u8>)> {
         let iter = match cf {
-            Some(cf_name) => self.db.iterator_cf(self.cfs.get(cf_name).unwrap(), IteratorMode::From(key, Direction::Reverse)),
-            None => self.db.iterator(IteratorMode::From(key, Direction::Reverse)),
+            Some(cf_name) => self.db.iterator_cf(
+                self.cfs.get(cf_name).unwrap(),
+                IteratorMode::From(key, Direction::Reverse),
+            ),
+            None => self
+                .db
+                .iterator(IteratorMode::From(key, Direction::Reverse)),
         };
 
         iter.filter(|(k, _)| k.starts_with(prefix))
@@ -104,8 +133,14 @@ impl RocksDB {
     }
 
     pub fn get_lru(&self) -> (usize, usize) {
-        let used = self.db.get_property_int("rocksdb.block-cache-usage").unwrap_or(0);
-        let capacity = self.db.get_property_int("rocksdb.block-cache-capacity").unwrap_or(0);
+        let used = self
+            .db
+            .get_property_int("rocksdb.block-cache-usage")
+            .unwrap_or(0);
+        let capacity = self
+            .db
+            .get_property_int("rocksdb.block-cache-capacity")
+            .unwrap_or(0);
         (used as usize, capacity as usize)
     }
 

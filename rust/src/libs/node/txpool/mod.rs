@@ -24,12 +24,12 @@ impl TXPool {
         Lazy::force(&GIFTED_SOL_CACHE);
     }
 
-    // pub fn insert<T: AsRef<[u8]>>(txs_packed: &[T]) {
-    //     for tx_packed in txs_packed {
-    //         let txu = Tx::unpack(tx_packed.as_ref());
-    //         TX_POOL.insert((txu.tx.nonce, txu.hash.clone()), txu);
-    //     }
-    // }
+    pub fn insert(packed_tx: Vec<u8>) {
+        for tx_packed in txs_packed {
+            let txu = Tx::unpack(tx_packed.as_ref());
+            TX_POOL.insert((txu.tx.nonce, txu.hash.clone()), txu);
+        }
+    }
 
     // pub fn delete_packed<T: AsRef<[u8]>>(txs_packed: &[T]) {
     //     for tx_packed in txs_packed {

@@ -35,15 +35,6 @@ impl NodeANRApi for NodeANR {
     fn get_random_verified(_n: usize) -> Vec<ANR> { vec![] }
     fn get_shared_secret(_pk: &[u8], _sk: &[u8]) -> Vec<u8> { vec![] }
 }
-pub struct NodeGen;
-impl NodeGen {
-    pub fn get_socket_sender() -> UnboundedSender<SocketMessage> { 
-        let (s, _r) = unbounded_channel();
-        s
-    }
-    pub fn broadcast(_msg_type: &str, _group: &str, _payload: Vec<Vec<u8>>) {}
-    pub fn handle_sync(_tag: &str, _istate: &IState, _payload: HashMap<String, Vec<u8>>) {}
-}
 
 #[derive(Clone)]
 pub struct SocketMessage {
