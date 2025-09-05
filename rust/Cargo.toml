@@ -49,5 +49,5 @@ wasmer = "5.0.4"
 wasmer-compiler-singlepass = "5.0.4"
 wasmer-middlewares = "5.0.4"
 crypto = "0.5.1"
-base58 = "0.2.0"
-borsh = "1.5.7"
+borsh = { version = "1.5.7", features = ["derive"] }
+borsh-derive = "1.5.7"

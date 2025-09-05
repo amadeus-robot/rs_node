@@ -1,4 +1,5 @@
 use crate::*;
+use borsh::BorshDeserialize;
 use bs58::encode;
 use futures_util::lock::Mutex;
 use rand::RngCore;
@@ -120,16 +121,30 @@ impl ComputorGen {
         } else {
             if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100) {
                 let sk = AMACONFIG.trainer_sk;
-                let packed_tx = TX::build(&sk, "Epoch", "submit_sol", &[sol.clone()]);
-                let hash = TX::unpack(&packed_tx).hash;
-                println!("🔢 tensor matmul complete! tx {:?}", base58::encode(hash));
+                let packed_tx = TX::build(
+                    &sk,
+                    "Epoch",
+                    "submit_sol",
+                    vec![sol.clone()],
+                    None,
+                    None,
+                    None,
+                );
+
+                let decoded: Txu = Txu::try_from_slice(&packed_tx).unwrap();
+
+                let hash = decoded.hash;
+                println!(
+                    "🔢 tensor matmul complete! tx {:?}",
+                    bs58::encode(hash).into_string()
+                );
 
                 TXPool::insert(packed_tx.clone());
                 NodeGen::broadcast(
                     BroadcastKind::TxPool,
                     "trainers",
                     packed_tx,
-                    socket_sender.clone(),
+                    self.sender.clone(),
                 );
             }
         }

@@ -1,4 +1,5 @@
 use crate::*;
+use borsh::{BorshDeserialize, BorshSerialize, to_vec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
@@ -6,34 +7,30 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub struct Action {
     pub op: String,
     pub contract: String,
     pub function: String,
     pub args: Vec<Vec<u8>>, // binaries in Elixir
     pub attached_symbol: Option<String>,
-    pub attached_amount: Option<i64>,
+    pub attached_amount: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct Tx {
-    pub signer: String,
+    pub signer: Vec<u8>,
     pub nonce: u128,
     pub actions: Vec<Action>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub struct Txu {
     pub tx: Tx,
-    pub tx_encoded: Vec<u8>,
     pub hash: Vec<u8>,
     pub signature: Vec<u8>,
 }
 
-// =======================
-// Errors (mirror Elixir atoms where possible)
-// =======================
 #[derive(Debug, thiserror::Error)]
 pub enum TxError {
     #[error("no_actions")]
@@ -104,16 +101,6 @@ pub enum TxError {
 
 pub type TxResult<T> = Result<T, TxError>;
 
-#[derive(Debug, Clone)]
-pub struct TxReturn {
-    pub error: Option<String>,
-    pub reason: Option<String>,
-    pub exec_used: u64,
-}
-
-// =======================
-// TX module (functions)
-// =======================
 pub struct TX;
 
 impl TX {
@@ -124,343 +111,104 @@ impl TX {
             return Err(TxError::TooLarge);
         }
 
-        let txu_raw = VanillaSer::decode(tx_packed).unwrap();
+        let txu = Txu::try_from_slice(tx_packed).unwrap();
 
-        // Step 2: pick wanted top-level keys
-        let wanted_keys = ["tx_encoded", "hash", "signature"];
-        let mut txu: HashMap<String, Term> = HashMap::new();
+        let txu_cloned = txu.clone();
 
-        if let Term::Map(m) = txu_raw {
-            for k in &wanted_keys {
-                let key = Term::Binary(k.as_bytes().to_vec());
-                if let Some(v) = m.get(&key) {
-                    txu.insert(k.to_string(), v.clone());
-                }
-            }
-        } else {
-            return Err(TxError::Unknown);
-        }
+        let tx = txu.tx;
+        let hash = txu.hash;
+        let signature = txu.signature;
+        let tx_encoded = to_vec(&tx).unwrap();
+        let actions = tx.actions;
 
-        // Step 3: fetch tx_encoded and decode
-        let tx_encoded_bytes = match txu.get("tx_encoded") {
-            Some(Term::Binary(b)) => b.clone(),
-            _ => return Err(TxError::Unknown),
+        let canonical_txu = &Txu {
+            hash: txu_cloned.hash,
+            signature: txu_cloned.signature,
+            tx: Tx {
+                actions: txu_cloned.tx.actions,
+                nonce: txu_cloned.tx.nonce,
+                signer: txu_cloned.tx.signer,
+            },
         };
-        let hash_bytes = match txu.get("hash") {
-            Some(Term::Binary(b)) => b.clone(),
-            _ => return Err(TxError::Unknown),
-        };
-        let signature_bytes = match txu.get("signature") {
-            Some(Term::Binary(b)) => b.clone(),
-            _ => return Err(TxError::Unknown),
-        };
-        let tx_raw = VanillaSer::decode(&tx_encoded_bytes).unwrap();
 
-        // Step 4: pick tx fields
-        let tx_wanted = ["signer", "nonce", "actions"];
-        let mut tx: BTreeMap<Term, Term> = BTreeMap::new();
-        if let Term::Map(m) = tx_raw {
-            for k in &tx_wanted {
-                let key = Term::Binary(k.as_bytes().to_vec());
-                if let Some(v) = m.get(&key) {
-                    tx.insert(key.clone(), v.clone());
-                }
-            }
-        } else {
-            return Err(TxError::Unknown);
-        }
+        let canonical = to_vec(canonical_txu).unwrap();
 
-        // Step 5: filter actions
-        if let Some(Term::List(actions_list)) = tx.get(&Term::Binary(b"actions".to_vec())) {
-            let action_keys = [
-                "op",
-                "contract",
-                "function",
-                "args",
-                "attached_symbol",
-                "attached_amount",
-            ];
-            let mut filtered_actions = Vec::new();
-
-            for action in actions_list {
-                if let Term::Map(a_map) = action {
-                    let mut filtered_map = BTreeMap::new();
-                    for key_str in &action_keys {
-                        let key = Term::Binary(key_str.as_bytes().to_vec());
-                        if let Some(v) = a_map.get(&key) {
-                            filtered_map.insert(key.clone(), v.clone());
-                        }
-                    }
-                    filtered_actions.push(Term::Map(filtered_map));
-                }
-            }
-
-            tx.insert(
-                Term::Binary(b"actions".to_vec()),
-                Term::List(filtered_actions),
-            );
-        }
-
-        // Step 6: insert tx into txu
-        txu.insert("tx".to_string(), Term::Map(tx.clone()));
-
-        // Step 7: fetch hash and signature
-        let hash = txu.get("hash").ok_or("missing hash").unwrap();
-        let signature = txu.get("signature").ok_or("missing signature").unwrap();
-
-        let txu = Self::normalize_atoms(txu.clone());
-
-        let mut inner_map = HashMap::new();
-        inner_map.insert(
-            "tx_encoded".to_string(),
-            Term::Binary(VanillaSer::encode(&Term::Map(tx.clone()))),
-        );
-        inner_map.insert("hash".to_string(), hash.clone()); // Term::Binary or whatever type hash is
-        inner_map.insert("signature".to_string(), signature.clone());
-
-        let mut btree = BTreeMap::new();
-        for (k, v) in inner_map.into_iter() {
-            btree.insert(Term::Atom(k), v); // key must be Term::Atom
-        }
-
-        // Wrap as Term::Map
-        let canonical_term = Term::Map(btree);
-
-        // Encode using VanillaSer
-        let canonical: Vec<u8> = VanillaSer::encode(&canonical_term);
-
-        if tx_packed != canonical.as_slice() {
+        if tx_packed != canonical {
             return Err(TxError::TxNotCanonical);
-        };
-
-        if let Term::Binary(hash_bytes) = hash {
-            let tx_btree = {
-                let mut map = BTreeMap::new();
-                for (k, v) in tx.clone().into_iter() {
-                    // k: Term, v: Term
-                    map.insert(k, v); // insert directly
-                }
-                Term::Map(map)
-            };
-
-            let computed_hash = blake3::hash(&VanillaSer::encode(&tx_btree));
-
-            if hash_bytes != computed_hash.as_bytes() {
-                return Err(TxError::InvalidHash);
-            }
-        } else {
-            return Err(TxError::InvalidHash);
-        };
-
-        // Extract signer_bytes, signature, and hash as &[u8]
-        let signer_bytes: &[u8] = if let Some(Term::Map(tx_map)) = txu.get("tx") {
-            if let Some(Term::Binary(bytes)) = tx_map.get(&Term::Atom("signer".to_string())) {
-                bytes.as_slice()
-            } else {
-                return Err(TxError::InvalidSignerType);
-            }
-        } else {
-            return Err(TxError::MissingTx);
-        };
-
-        let sig_bytes: &[u8] = if let Term::Binary(bytes) = &signature {
-            bytes.as_slice()
-        } else {
-            return Err(TxError::InvalidSignature);
-        };
-
-        let msg_bytes: &[u8] = if let Term::Binary(bytes) = &hash {
-            bytes.as_slice()
-        } else {
-            return Err(TxError::InvalidHash);
-        };
-
-        // Verify signature
-        if !BlsRs::verify(signer_bytes, sig_bytes, msg_bytes, BLS12AggSig::DST_TX) {
-            return Err(TxError::InvalidSignature);
-        };
-
-        let tx_map = match txu.get("tx") {
-            Some(Term::Map(map)) => map,
-            _ => return Err(TxError::ActionsMustBeList), // or another error
-        };
-
-        let nonce = match tx_map.get(&Term::Atom("nonce".to_string())) {
-            Some(Term::Int(n)) => *n as u128,
-            _ => return Err(TxError::NonceNotInteger),
-        };
-
-        if nonce > 99_999_999_999_999_999_999 {
-            return Err(TxError::NonceTooHigh);
         }
 
-        // Validate actions
-        let actions = match tx_map.get(&Term::Atom("actions".to_string())) {
-            Some(Term::List(list)) => list,
-            _ => return Err(TxError::ActionsMustBeList),
-        };
-
-        if actions.len() != 1 {
-            return Err(TxError::ActionsLengthMustBe1);
+        if hash != blake3::hash(&tx_encoded).as_bytes().to_vec() {
+            return Err(TxError::InvalidHash);
         }
 
-        // Get first action
-        let action: &Term = &actions[0];
+        if !BlsRs::verify(&tx.signer, &signature.clone(), &hash, BLS12AggSig::DST_TX) {
+            return Err(TxError::InvalidSignature);
+        }
 
-        let action_map = match action {
-            Term::Map(map) => map,
-            _ => return Err(TxError::OpMustBeCall), // fallback
-        };
+        let action = actions.first().unwrap();
 
-        // Helper to get string fields from Term::Binary
-        let get_str = |key: &str| -> Result<&Vec<u8>, TxError> {
-            match action_map.get(&Term::Atom(key.to_string())) {
-                Some(Term::Binary(bytes)) => Ok(bytes),
-                _ => Err(match key {
-                    "contract" => TxError::ContractMustBeBinary,
-                    "function" => TxError::FunctionMustBeBinary,
-                    _ => TxError::OpMustBeCall,
-                }),
-            }
-        };
+        if action.op != "call" {
+            return Err(TxError::OpMustBeCall);
+        }
 
-        // Validate op
-        match action_map.get(&Term::Atom("op".to_string())) {
-            Some(Term::Binary(op_bytes)) => {
-                if op_bytes != b"call" {
-                    return Err(TxError::OpMustBeCall);
-                }
-            }
-            _ => return Err(TxError::OpMustBeCall),
-        };
+        let epoch = Consensus::chain_epoch();
 
-        let epoch: u64 = Consensus::chain_epoch();
-
-        let args = match action_map.get(&Term::Atom("args".to_string())) {
-            Some(Term::List(xs)) => {
-                let mut out = Vec::new();
-                for t in xs {
-                    match t {
-                        Term::Binary(b) => out.push(b.clone()),
-                        _ => return Err(TxError::ArgMustBeBinary),
-                    }
-                }
-                out
-            }
-            _ => vec![],
-        };
-
-        let contract = match action_map.get(&Term::Atom("contract".to_string())) {
-            Some(Term::Binary(b)) => String::from_utf8_lossy(b).to_string(),
-            _ => return Err(TxError::InvalidContractOrFunction),
-        };
-
-        let attached_symbol = match action_map.get(&Term::Atom("attached_symbol".to_string())) {
-            Some(Term::Binary(b)) => Some(b.clone()),
-            None => None,
-            _ => return Err(TxError::AttachedSymbolMustBeBinary),
-        };
-
-        // --- attached_amount ---
-        let attached_amount = match action_map.get(&Term::Atom("attached_amount".to_string())) {
-            Some(Term::Binary(b)) => Some(b.clone()),
-            None => None,
-            _ => return Err(TxError::AttachedAmountMustBeBinary),
-        };
-
-        let function = match action_map.get(&Term::Atom("function".to_string())) {
-            Some(Term::Binary(b)) => String::from_utf8_lossy(b).to_string(),
-            _ => return Err(TxError::InvalidContractOrFunction),
-        };
-
-        let allowed_contracts: HashSet<&str> = ["Epoch", "Coin", "Contract"].into_iter().collect();
-        let allowed_functions: HashSet<&str> = [
+        let contracts = ["Epoch", "Coin", "Contract"];
+        let functions = [
             "submit_sol",
             "transfer",
             "set_emission_address",
             "slash_trainer",
             "deploy",
-        ]
-        .into_iter()
-        .collect();
+        ];
 
-        if (allowed_contracts.contains(contract.as_str())
-            && allowed_functions.contains(function.as_str()))
-            || BlsRs::validate_public_key(&contract.as_bytes())
+        // Check the conditions
+        if contracts.contains(&action.contract.as_str())
+            && functions.contains(&action.function.as_str())
         {
-            // ok
+            // Both contract and function are allowed
+        } else if BlsRs::validate_public_key(action.contract.as_bytes()) {
+            // Valid public key
         } else {
+            // None matched: return an error
             return Err(TxError::InvalidContractOrFunction);
         }
 
-        // special meeting block
         if is_special_meeting_block {
-            if contract != "Epoch" {
+            if !["Epoch"].contains(&action.contract.as_str()) {
                 return Err(TxError::InvalidModuleForSpecialMeeting);
             }
-            if function != "slash_trainer" {
-                return Err(TxError::InvalidFunctionForSpecialMeeting);
+            if !["slash_trainer"].contains(&action.function.as_str()) {
+                return Err(TxError::InvalidModuleForSpecialMeeting);
             }
         }
 
-        // attachment size checks
-        if let Some(symbol) = &attached_symbol {
-            if symbol.is_empty() || symbol.len() > 32 {
+        if let Some(symbol) = &action.attached_symbol {
+            let len = symbol.as_bytes().len();
+            if len < 1 || len > 32 {
                 return Err(TxError::AttachedSymbolWrongSize);
             }
         }
-        if let Some(amount) = &attached_amount {
-            if amount.is_empty() {
-                return Err(TxError::AttachedAmountMustBeBinary);
-            }
-        }
 
-        if attached_symbol.is_some() && attached_amount.is_none() {
+        if action.attached_symbol.is_some() && action.attached_amount.is_none() {
             return Err(TxError::AttachedAmountMustBeIncluded);
         }
-        if attached_amount.is_some() && attached_symbol.is_none() {
+
+        if action.attached_amount.is_some() && action.attached_symbol.is_none() {
             return Err(TxError::AttachedSymbolMustBeIncluded);
         }
-
-        let txu: Txu = Txu {
-            hash: hash_bytes,
-            signature: signature_bytes,
-            tx: Tx {
-                signer: String::from_utf8_lossy(signer_bytes).to_string(),
-                nonce: nonce,
-                actions: vec![Action {
-                    op: "call".to_string(),
-                    contract,
-                    function,
-                    args,
-                    attached_symbol: attached_symbol
-                        .map(|b| String::from_utf8_lossy(&b).to_string()),
-                    attached_amount: attached_amount.and_then(|b| {
-                        if b.len() == 8 {
-                            let arr: [u8; 8] = b.try_into().ok()?;
-                            Some(i64::from_le_bytes(arr))
-                        } else {
-                            None
-                        }
-                    }),
-                }],
-            },
-            tx_encoded: tx_encoded_bytes,
-        };
 
         Ok(txu)
     }
 
-    // // build(sk, contract, function, args, nonce \\ nil, attached_symbol \\ nil, attached_amount \\ nil)
-    // // -> packed bytes (like VanillaSer.encode(%{tx_encoded, hash, signature}))
     pub fn build(
         sk: &[u8],
         contract: &str,
         function: &str,
         args: Vec<Vec<u8>>,
         nonce: Option<u128>,
-        attached_symbol: Option<Vec<u8>>,
-        attached_amount: Option<Vec<u8>>,
+        attached_symbol: Option<String>,
+        attached_amount: Option<u64>,
     ) -> Vec<u8> {
         let pk = BlsRs::get_public_key(sk).unwrap();
         let nonce = nonce.unwrap_or_else(|| {
@@ -485,22 +233,23 @@ impl TX {
             action.attached_amount = attached_amount;
         }
 
-        let tx = Tx {
-            signer: bs58::encode(pk).into_string(), // keep as String like Elixir Base58PK
+        let tx: Tx = Tx {
+            signer: pk,
             nonce,
             actions: vec![action],
         };
 
-        let tx_encoded = VanillaSer::encode(&tx);
+        let tx_encoded = to_vec(&tx).unwrap();
         let hash = blake3::hash(&tx_encoded);
-        let signature = BlsRs::sign(sk, &hash, BLS12AggSig::DST_TX);
+        let signature = BlsRs::sign(sk, hash.as_bytes(), BLS12AggSig::DST_TX).unwrap();
 
-        let outer = Canonical {
-            tx_encoded,
-            hash,
+        let tx_built = Txu {
+            hash: hash.as_bytes().to_vec(),
             signature,
+            tx,
         };
-        VanillaSer::encode(&outer)
+
+        to_vec(&tx_built).unwrap()
     }
 
     // // chain_valid(tx_packed) and chain_valid(txu)
@@ -600,19 +349,4 @@ impl TX {
     //         _ => vec![],
     //     }
     // }
-
-    // pack(txu) => encode %{tx_encoded, hash, signature}
-    pub fn pack(txu: &Txu) -> Vec<u8> {
-        VanillaSer::encode(&Term::Binary(bincode::serialize(&txu).unwrap()))
-    }
-
-    pub fn unpack(tx_packed: &[u8]) -> Txu {
-        let term: Term = VanillaSer::decode(tx_packed).expect("Failed to decode tx_packed");
-
-        if let Term::Binary(inner_bytes) = term {
-            bincode::deserialize::<Txu>(&inner_bytes).expect("Failed to deserialize Txu")
-        } else {
-            panic!("Expected a Term::Binary for Txu");
-        }
-    }
 }
