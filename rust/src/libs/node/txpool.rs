@@ -1,14 +1,11 @@
+use borsh::{BorshDeserialize, from_slice};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::sync::LazyLock; // For global static tables
 
-pub mod tx;
-pub use tx::*;
-
-use crate::Consensus;
+use crate::*;
 
 // Global tables (similar to ETS)
-pub static TX_POOL: Lazy<DashMap<u64, String>> = Lazy::new(|| DashMap::new());
+pub static TX_POOL: Lazy<DashMap<String, Txu>> = Lazy::new(|| DashMap::new());
 pub static GIFTED_SOL_CACHE: Lazy<DashMap<u64, String>> = Lazy::new(|| DashMap::new());
 
 // Assuming you have structs TX and TXU and their methods
@@ -24,11 +21,11 @@ impl TXPool {
         Lazy::force(&GIFTED_SOL_CACHE);
     }
 
-    pub fn insert(packed_tx: Vec<u8>) {
-        for tx_packed in txs_packed {
-            let txu = Tx::unpack(tx_packed.as_ref());
-            TX_POOL.insert((txu.tx.nonce, txu.hash.clone()), txu);
-        }
+    pub fn insert(tx_packed: Vec<u8>) {
+        let txu = Txu::try_from_slice(&tx_packed).unwrap();
+        let hash_bs58_string = bs58::encode(&txu.hash.as_slice()).into_string();
+
+        TX_POOL.insert(hash_bs58_string, txu);
     }
 
     // pub fn delete_packed<T: AsRef<[u8]>>(txs_packed: &[T]) {

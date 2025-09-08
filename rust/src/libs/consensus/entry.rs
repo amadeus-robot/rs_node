@@ -1,5 +1,5 @@
 use blake3;
-use serde::{Deserialize, Serialize};
+use borsh::{BorshDeserialize, BorshSerialize, to_vec};
 use std::collections::HashMap;
 
 use crate::*;
@@ -28,7 +28,7 @@ pub enum EntryError {
 }
 
 // Entry header and entry structs
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize)]
 pub struct EntryHeader {
     pub slot: u64,
     pub height: u64,
@@ -40,7 +40,7 @@ pub struct EntryHeader {
     pub txs_hash: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize)]
 pub struct Entry {
     pub signature: Vec<u8>,
     pub hash: Vec<u8>,
@@ -55,17 +55,20 @@ impl Entry {
         match entry_packed {
             None => None,
             Some(bytes) => {
-                // Try deserializing the Entry
-                let mut entry: Entry = bincode::deserialize(bytes).ok()?;
-                // Try deserializing the header inside
+                let entry: Entry = Entry::try_from_slice(bytes).ok()?;
+
                 Some(entry)
             }
         }
     }
 
-    pub fn pack(&self) -> Vec<u8> {
-        // Only take relevant fields
-        bincode::serialize(&self).unwrap()
+    pub fn pack(e: Entry) -> Vec<u8> {
+        let mut writer: Vec<u8> = vec![];
+
+        // borrow writer mutably
+        Self::serialize(&e, &mut writer).unwrap();
+
+        writer
     }
 
     pub fn sign(mut entry_unpacked: Entry) -> Entry {
@@ -75,7 +78,10 @@ impl Entry {
         let txs_hash = blake3::hash(&txs_concat).as_bytes().to_vec();
         entry_unpacked.header_unpacked.txs_hash = txs_hash.clone();
 
-        let header_bin = bincode::serialize(&entry_unpacked.header_unpacked).unwrap();
+        let mut header_bin: Vec<u8> = vec![];
+
+        let header_bin = to_vec(&entry_unpacked.header_unpacked).unwrap();
+
         let hash = blake3::hash(&header_bin).as_bytes().to_vec();
         let signature = BlsRs::sign(sk, &hash, b"BLS12AggSig_dst_entry").unwrap();
 
@@ -88,22 +94,27 @@ impl Entry {
         }
     }
 
-    pub fn validate_signature(&self) -> Result<(), &'static str> {
-        let hash = blake3::hash(&bincode::serialize(&self.header_unpacked).unwrap())
+    pub fn validate_signature(entry_unpacked: &Entry) -> Result<(), &'static str> {
+        let hash = blake3::hash(&to_vec(&entry_unpacked.header_unpacked).unwrap())
             .as_bytes()
             .to_vec();
-        if let Some(mask) = &self.mask {
+        if let Some(mask) = &entry_unpacked.mask {
             // Placeholder for masked BLS validation
-            let trainers = Consensus::trainers_for_height(self.header_unpacked.height);
+            let trainers = Consensus::trainers_for_height(entry_unpacked.header_unpacked.height);
             let _trainers_signed = trainers; // unmask logic
             let agg_pk = BlsRs::aggregate_public_keys(_trainers_signed).unwrap();
-            if !BlsRs::verify(&agg_pk, &self.signature, &hash, b"BLS12AggSig_dst_entry") {
+            if !BlsRs::verify(
+                &agg_pk,
+                &entry_unpacked.signature,
+                &hash,
+                b"BLS12AggSig_dst_entry",
+            ) {
                 return Err("invalid_signature");
             }
         } else {
             if !BlsRs::verify(
-                &self.header_unpacked.signer,
-                &self.signature,
+                &entry_unpacked.header_unpacked.signer,
+                &entry_unpacked.signature,
                 &hash,
                 b"BLS12AggSig_dst_entry",
             ) {
@@ -185,8 +196,10 @@ impl Entry {
 
         let mut state: HashMap<(u8, Vec<u8>), u64> = HashMap::new();
         for tx in &next_entry.txs {
-            let txu = TX::unpack(tx);
+            let txu = TX::unpack(tx).unwrap();
             // Validate nonce, balance, epoch, etc. Placeholder
+
+            
         }
 
         Ok(())

@@ -104,6 +104,11 @@ pub type TxResult<T> = Result<T, TxError>;
 pub struct TX;
 
 impl TX {
+    pub fn unpack(tx_packed: &[u8]) -> TxResult<Txu> {
+        let txu = Txu::try_from_slice(tx_packed).unwrap();
+
+        Ok(txu)
+    }
     pub fn validate(tx_packed: &[u8], is_special_meeting_block: bool) -> TxResult<Txu> {
         let tx_size = CONFIG.ama.tx_size as usize;
         // size check
@@ -113,21 +118,19 @@ impl TX {
 
         let txu = Txu::try_from_slice(tx_packed).unwrap();
 
-        let txu_cloned = txu.clone();
-
-        let tx = txu.tx;
-        let hash = txu.hash;
-        let signature = txu.signature;
-        let tx_encoded = to_vec(&tx).unwrap();
-        let actions = tx.actions;
+        let tx = &txu.tx;
+        let hash = &txu.hash;
+        let signature = &txu.signature;
+        let tx_encoded = to_vec(tx).unwrap();
+        let actions = &tx.actions;
 
         let canonical_txu = &Txu {
-            hash: txu_cloned.hash,
-            signature: txu_cloned.signature,
+            hash: hash.to_vec(),
+            signature: signature.to_vec(),
             tx: Tx {
-                actions: txu_cloned.tx.actions,
-                nonce: txu_cloned.tx.nonce,
-                signer: txu_cloned.tx.signer,
+                actions: actions.to_vec(),
+                nonce: tx.nonce,
+                signer: tx.signer.to_vec(),
             },
         };
 
@@ -137,7 +140,7 @@ impl TX {
             return Err(TxError::TxNotCanonical);
         }
 
-        if hash != blake3::hash(&tx_encoded).as_bytes().to_vec() {
+        if *hash != blake3::hash(&tx_encoded).as_bytes().to_vec() {
             return Err(TxError::InvalidHash);
         }
 

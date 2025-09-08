@@ -1,10 +1,10 @@
-use rocksdb::{ColumnFamily, DB, Direction, IteratorMode, Options, WriteBatch};
+use rocksdb::*;
 use std::collections::HashMap;
-use std::path::Path;
+use std::sync::Arc;
 
 pub struct RocksDB {
-    db: DB,
-    cfs: HashMap<String, ColumnFamily>,
+    db: Arc<TransactionDB<MultiThreaded>>,
+    cfs: HashMap<String, Arc<ColumnFamily>>, // see note
 }
 
 impl RocksDB {
@@ -13,11 +13,14 @@ impl RocksDB {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        let db = DB::open_cf(&opts, path, cfs).unwrap();
+        let txn_opts = TransactionDBOptions::default();
+
+        let db: Arc<TransactionDB> = Arc::new(TransactionDB::open_cf(&opts, &txn_opts, path, cfs).unwrap());
+
         let mut cf_map = HashMap::new();
         for &cf_name in cfs {
             let cf = db.cf_handle(cf_name).unwrap();
-            cf_map.insert(cf_name.to_string(), cf);
+            cf_map.insert(cf_name.to_string(), cf.clone()); // clone Arc
         }
 
         Self { db, cfs: cf_map }
@@ -58,7 +61,11 @@ impl RocksDB {
         }
     }
 
-    pub fn get_prefix(&self, prefix: &[u8], cf: Option<&str>) -> Vec<(Vec<u8>, Vec<u8>)> {
+    pub fn get_prefix(
+        &self,
+        prefix: &[u8],
+        cf: Option<&str>,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, rocksdb::Error> {
         let iter = match cf {
             Some(cf_name) => self
                 .db
@@ -66,14 +73,16 @@ impl RocksDB {
             None => self.db.iterator(IteratorMode::Start),
         };
 
-        iter.filter_map(|(k, v)| {
+        let mut results = Vec::new();
+
+        for item in iter {
+            let (k, v) = item?; // propagate RocksDB error
             if k.starts_with(prefix) {
-                Some((k.to_vec(), v.to_vec()))
-            } else {
-                None
+                results.push((k.to_vec(), v.to_vec()));
             }
-        })
-        .collect()
+        }
+
+        Ok(results)
     }
 
     pub fn get_next(
@@ -81,7 +90,7 @@ impl RocksDB {
         prefix: &[u8],
         key: &[u8],
         cf: Option<&str>,
-    ) -> Option<(Vec<u8>, Vec<u8>)> {
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>, rocksdb::Error> {
         let iter = match cf {
             Some(cf_name) => self.db.iterator_cf(
                 self.cfs.get(cf_name).unwrap(),
@@ -92,10 +101,16 @@ impl RocksDB {
                 .iterator(IteratorMode::From(key, Direction::Forward)),
         };
 
-        iter.filter(|(k, _)| k.starts_with(prefix))
-            .skip(1) // equivalent of offset=1 in Elixir
-            .next()
-            .map(|(k, v)| (k.to_vec(), v.to_vec()))
+        for item in iter {
+            let (k, v) = item?; // propagate RocksDB error
+            if k.starts_with(prefix) {
+                if &k[..] != key {
+                    return Ok(Some((k.to_vec(), v.to_vec())));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     pub fn get_prev(
@@ -103,7 +118,7 @@ impl RocksDB {
         prefix: &[u8],
         key: &[u8],
         cf: Option<&str>,
-    ) -> Option<(Vec<u8>, Vec<u8>)> {
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>, rocksdb::Error> {
         let iter = match cf {
             Some(cf_name) => self.db.iterator_cf(
                 self.cfs.get(cf_name).unwrap(),
@@ -114,10 +129,17 @@ impl RocksDB {
                 .iterator(IteratorMode::From(key, Direction::Reverse)),
         };
 
-        iter.filter(|(k, _)| k.starts_with(prefix))
-            .skip(1)
-            .next()
-            .map(|(k, v)| (k.to_vec(), v.to_vec()))
+        for item in iter {
+            let (k, v) = item?; // propagate RocksDB error
+            if k.starts_with(prefix) {
+                if &k[..] != key {
+                    // skip the starting key itself
+                    return Ok(Some((k.to_vec(), v.to_vec())));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     pub fn flush_all(&self) {
@@ -132,16 +154,15 @@ impl RocksDB {
         }
     }
 
-    pub fn get_lru(&self) -> (usize, usize) {
-        let used = self
-            .db
-            .get_property_int("rocksdb.block-cache-usage")
-            .unwrap_or(0);
-        let capacity = self
-            .db
-            .get_property_int("rocksdb.block-cache-capacity")
-            .unwrap_or(0);
-        (used as usize, capacity as usize)
+    pub fn get_lru(&self) -> Result<(usize, usize), &'static str> {
+        Ok((
+            self.db
+                .property_int_value("rocksdb.block-cache-usage")
+                .ok_or("Failed to read block-cache-usage")? as usize,
+            self.db
+                .property_int_value("rocksdb.block-cache-capacity")
+                .ok_or("Failed to read block-cache-capacity")? as usize,
+        ))
     }
 
     pub fn checkpoint(&self, path: &str) {
