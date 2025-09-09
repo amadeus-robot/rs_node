@@ -12,6 +12,16 @@ pub enum ComputorType {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct SeedAnr {
+    pub ip4: String,
+    pub port: u16,
+    pub version: String,
+    pub signature: Vec<u8>,
+    pub ts: u64,
+    pub pk: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct AmaConfig {
     pub version_3b: [u8; 3],
     pub entry_size: usize,
@@ -25,6 +35,7 @@ pub struct AmaConfig {
     pub udp_ipv4_tuple: Ipv4Addr,
     pub udp_port: u16,
     pub seednodes: Vec<String>,
+    pub seedanrs: Vec<SeedAnr>,
     pub othernodes: Vec<String>,
     pub trustfactor: f64,
 

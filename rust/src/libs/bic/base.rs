@@ -4,10 +4,10 @@ use blake3::hash;
 pub struct Base;
 
 impl Base {
-    pub fn exec_cost(txu: &Txu) -> i64 {
-        let bytes = txu.tx_encoded.len() as i64 + 32 + 96;
-        3 + (bytes / 256) * 3
-    }
+    // pub fn exec_cost(txu: &Txu) -> i64 {
+    //     let bytes = txu.tx_encoded.len() as i64 + 32 + 96;
+    //     3 + (bytes / 256) * 3
+    // }
 
     pub fn seed_random(vr: &[u8], txhash: &[u8], action_index: &str, call_cnt: &str) -> Vec<u8> {
         let mut data = Vec::new();

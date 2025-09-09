@@ -1,5 +1,6 @@
 pub mod computor_gen;
 pub mod logger_gen;
+pub mod node_anr;
 pub mod node_gen;
 pub mod node_gen_reassembly_gen;
 pub mod node_gen_socket_gen;
@@ -11,6 +12,7 @@ pub mod upow;
 
 pub use computor_gen::*;
 pub use logger_gen::*;
+pub use node_anr::*;
 pub use node_gen::*;
 pub use node_gen_reassembly_gen::*;
 pub use node_gen_socket_gen::*;

@@ -75,63 +75,63 @@ impl Sol {
         }
     }
 
-    pub fn verify(sol: &[u8], opts: Option<HashMap<&str, Vec<u8>>>) -> Result<bool, String> {
-        let epoch = u32::from_le_bytes(sol[0..4].try_into().unwrap());
+    // pub fn verify(sol: &[u8], opts: Option<HashMap<&str, Vec<u8>>>) -> Result<bool, String> {
+    //     let epoch = u32::from_le_bytes(sol[0..4].try_into().unwrap());
 
-        if epoch >= 260 {
-            if sol.len() != Self::SOL_SIZE {
-                return Err("invalid_sol_seed_size".into());
-            }
-            let hash = opts
-                .as_ref()
-                .and_then(|o| o.get("hash"))
-                .cloned()
-                .unwrap_or_else(|| blake3::hash(sol).as_bytes().to_vec());
+    //     if epoch >= 260 {
+    //         if sol.len() != Self::SOL_SIZE {
+    //             return Err("invalid_sol_seed_size".into());
+    //         }
+    //         let hash = opts
+    //             .as_ref()
+    //             .and_then(|o| o.get("hash"))
+    //             .cloned()
+    //             .unwrap_or_else(|| blake3::hash(sol).as_bytes().to_vec());
 
-            let vr_b3 = opts
-                .as_ref()
-                .and_then(|o| o.get("vr_b3"))
-                .cloned()
-                .unwrap_or_else(|| rand::random::<[u8; 32]>().to_vec());
+    //         let vr_b3 = opts
+    //             .as_ref()
+    //             .and_then(|o| o.get("vr_b3"))
+    //             .cloned()
+    //             .unwrap_or_else(|| rand::random::<[u8; 32]>().to_vec());
 
-            Ok(Self::verify_hash(epoch, &hash) && Blake3::freivalds_e260(sol, &vr_b3))
-        } else if epoch >= 156 {
-            if sol.len() != Self::SOL_SIZE {
-                return Err("invalid_sol_seed_size".into());
-            }
-            let hash = opts
-                .as_ref()
-                .and_then(|o| o.get("hash"))
-                .cloned()
-                .unwrap_or_else(|| Blake3::hash(sol).as_bytes().to_vec());
+    //         Ok(Self::verify_hash(epoch, &hash) && Blake3::freivalds_e260(sol, &vr_b3))
+    //     } else if epoch >= 156 {
+    //         if sol.len() != Self::SOL_SIZE {
+    //             return Err("invalid_sol_seed_size".into());
+    //         }
+    //         let hash = opts
+    //             .as_ref()
+    //             .and_then(|o| o.get("hash"))
+    //             .cloned()
+    //             .unwrap_or_else(|| Blake3::hash(sol).as_bytes().to_vec());
 
-            Ok(Self::verify_hash(epoch, &hash) && Blake3::freivalds(sol))
-        } else if epoch >= 1 {
-            if sol.len() != 320 {
-                return Err("invalid_sol_seed_size".into());
-            }
-            Ok(Self::verify_cache("UPOW1", sol))
-        } else {
-            if sol.len() != 256 {
-                return Err("invalid_sol_seed_size".into());
-            }
-            Ok(Self::verify_cache("UPOW0", sol))
-        }
-    }
+    //         Ok(Self::verify_hash(epoch, &hash) && Blake3::freivalds(sol))
+    //     } else if epoch >= 1 {
+    //         if sol.len() != 320 {
+    //             return Err("invalid_sol_seed_size".into());
+    //         }
+    //         Ok(Self::verify_cache("UPOW1", sol))
+    //     } else {
+    //         if sol.len() != 256 {
+    //             return Err("invalid_sol_seed_size".into());
+    //         }
+    //         Ok(Self::verify_cache("UPOW0", sol))
+    //     }
+    // }
 
-    fn verify_cache(module: &str, sol: &[u8]) -> bool {
-        // TODO: Replace with your ETS-like cache.
-        // Pseudocode:
-        // if cache says "valid" -> remove & return true
-        // else -> recalc with UPOW0/UPOW1::calculate
-        let epoch = u32::from_le_bytes(sol[0..4].try_into().unwrap());
-        let hash = match module {
-            "UPOW0" => upow0_calculate(sol),
-            "UPOW1" => upow1_calculate(sol),
-            _ => return false,
-        };
-        Self::verify_hash(epoch, &hash)
-    }
+    // fn verify_cache(module: &str, sol: &[u8]) -> bool {
+    //     // TODO: Replace with your ETS-like cache.
+    //     // Pseudocode:
+    //     // if cache says "valid" -> remove & return true
+    //     // else -> recalc with UPOW0/UPOW1::calculate
+    //     let epoch = u32::from_le_bytes(sol[0..4].try_into().unwrap());
+    //     let hash = match module {
+    //         "UPOW0" => upow0_calculate(sol),
+    //         "UPOW1" => upow1_calculate(sol),
+    //         _ => return false,
+    //     };
+    //     Self::verify_hash(epoch, &hash)
+    // }
 }
 
 #[cfg(test)]

@@ -280,16 +280,7 @@ where
                             signer: pk.clone(),
                         };
 
-                        task::spawn(async move {
-                            S::handle(
-                                maybe_msg
-                                    .get("op")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or_default(),
-                                peer,
-                                maybe_msg,
-                            );
-                        });
+                        
                     }
                     Err(e) => {
                         eprintln!("proc_msg decompress failed: {:?}", e);
@@ -314,35 +305,6 @@ where
             let key_hash = blake3::hash(&key_material); // you can use SHA256 if you prefer
             let key = key_hash.as_bytes(); // 32 bytes
 
-            //
-            let plaintext = {
-                panic!("AES-GCM decryption not implemented: replace with real decrypt call");
-            };
-
-            match P::deflate_decompress(&plaintext) {
-                Ok(decompressed) => {
-                    let maybe_msg: serde_json::Value =
-                        serde_json::from_slice(&decompressed).unwrap_or(serde_json::Value::Null);
-                    let peer = Peer {
-                        ip,
-                        version: version_3byte,
-                        signer: pk.clone(),
-                    };
-                    task::spawn(async move {
-                        S::handle(
-                            maybe_msg
-                                .get("op")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or_default(),
-                            peer,
-                            maybe_msg,
-                        );
-                    });
-                }
-                Err(e) => {
-                    eprintln!("proc_msg decompress failed after decrypt: {:?}", e);
-                }
-            }
         }
     });
 

@@ -15,6 +15,10 @@ pub enum BroadcastKind {
 pub struct NodeGen {}
 
 impl NodeGen {
+    pub fn init() {
+        
+    }
+
     pub fn get_socket_gen() -> String {
         let mut rng = rand::thread_rng();
         let idx = rng.gen_range(0..8); // 0..7

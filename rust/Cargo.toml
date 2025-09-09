@@ -51,3 +51,4 @@ wasmer-middlewares = "5.0.4"
 crypto = "0.5.1"
 borsh = { version = "1.5.7", features = ["derive"] }
 borsh-derive = "1.5.7"
+stunclient = "0.4.1"

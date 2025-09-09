@@ -12,6 +12,7 @@ tx_size = 393216
 attestation_size = 512
 quorum = 3
 
+
 # File paths
 work_folder = "~/.cache/amadeusd"  # default path, can be overridden by WORKFOLDER env
 
@@ -39,3 +40,25 @@ archival_node = false               # override via ARCHIVALNODE env
 autoupdate = false                  # override via AUTOUPDATE env
 computor_type = "default"           # "trainer" or "default", override via COMPUTOR env
 snapshot_height = 24875547          # override via SNAPSHOT_HEIGHT env
+
+
+[[ama.seedanrs]]
+ip4 = "72.9.144.110"
+port = 36969
+version = "1.1.3"
+signature = [
+  132, 185, 113, 23, 39, 105, 32, 50, 15, 152, 225, 159, 234, 175,
+  23, 147, 240, 146, 208, 142, 210, 5, 165, 81, 9, 197, 142, 193,
+  112, 240, 37, 132, 227, 122, 162, 186, 180, 15, 107, 125, 160,
+  241, 124, 19, 94, 221, 94, 242, 14, 42, 32, 249, 165, 234, 61,
+  168, 57, 187, 224, 18, 194, 159, 79, 74, 210, 148, 141, 206, 55,
+  73, 97, 25, 25, 106, 113, 163, 206, 72, 74, 114, 64, 186, 126,
+  157, 192, 83, 67, 99, 249, 160, 48, 144, 182, 169, 138, 199
+]
+ts = 1755802866
+pk = [
+  169, 232, 30, 216, 200, 234, 174, 189, 141, 213, 58, 136, 157,
+  140, 90, 134, 18, 171, 115, 48, 39, 90, 93, 57, 4, 62, 149, 32,
+  14, 124, 27, 102, 240, 220, 0, 197, 48, 126, 134, 122, 85, 169,
+  173, 158, 122, 228, 185, 240
+]
