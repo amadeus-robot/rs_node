@@ -85,70 +85,70 @@ impl ComputorGen {
             return;
         }
 
-        // self.tick().await;
+        self.tick().await;
     }
 
-    // async fn tick(&self) {
-    //     println!("computor running {:?}", chrono::Utc::now());
+    async fn tick(&self) {
+        println!("computor running {:?}", chrono::Utc::now());
 
-    //     let pk = AMACONFIG.trainer_pk();
-    //     let pop = AMACONFIG.trainer_pop();
+        let pk = AMACONFIG.trainer_pk();
+        let pop = AMACONFIG.trainer_pop();
 
-    //     let coins = Consensus::chain_balance(&pk, None);
-    //     let epoch = Consensus::chain_epoch();
-    //     let has_exec_coins = coins >= Coin::to_cents(100) as u64;
+        let coins = Consensus::chain_balance(&pk, None);
+        let epoch = Consensus::chain_epoch();
+        let has_exec_coins = coins >= Coin::to_cents(100) as u64;
 
-    //     let st = self.state.lock().await;
-    //     let is_trainer = matches!(st.ctype, Some(ComputorType::Trainer));
-    //     drop(st);
+        let st = self.state.lock().await;
+        let is_trainer = matches!(st.ctype, Some(ComputorType::Trainer));
+        drop(st);
 
-    //     // Generate random bytes
-    //     let mut rand_bytes = [0u8; 96];
-    //     rand::thread_rng().fill_bytes(&mut rand_bytes);
+        // Generate random bytes
+        let mut rand_bytes = [0u8; 96];
+        rand::thread_rng().fill_bytes(&mut rand_bytes);
 
-    //     if (is_trainer && !has_exec_coins) || self.state.lock().await.ctype.is_none() {
-    //         if let Some(sol) = UPOW::compute_for(
-    //             epoch,
-    //             &EntryGenesis::signer(),
-    //             &EntryGenesis::pop(),
-    //             &pk,
-    //             &rand_bytes,
-    //             100,
-    //         ) {
-    //             println!("🔢 tensor matmul complete! broadcasting sol..");
-    //             NodeGen::broadcast(BroadcastKind::Sol, "trainers", sol, self.sender.clone());
-    //         }
-    //     } else {
-    //         if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100) {
-    //             let sk = AMACONFIG.trainer_sk;
-    //             let packed_tx = TX::build(
-    //                 &sk,
-    //                 "Epoch",
-    //                 "submit_sol",
-    //                 vec![sol.clone()],
-    //                 None,
-    //                 None,
-    //                 None,
-    //             );
+        if (is_trainer && !has_exec_coins) || self.state.lock().await.ctype.is_none() {
+            if let Some(sol) = UPOW::compute_for(
+                epoch,
+                &EntryGenesis::signer(),
+                &EntryGenesis::pop(),
+                &pk,
+                &rand_bytes,
+                100,
+            ) {
+                println!("🔢 tensor matmul complete! broadcasting sol..");
+                NodeGen::broadcast(BroadcastKind::Sol, "trainers", sol, self.sender.clone());
+            }
+        } else {
+            if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100) {
+                let sk = AMACONFIG.trainer_sk;
+                let packed_tx = TX::build(
+                    &sk,
+                    "Epoch",
+                    "submit_sol",
+                    vec![sol.clone()],
+                    None,
+                    None,
+                    None,
+                );
 
-    //             let decoded: Txu = Txu::try_from_slice(&packed_tx).unwrap();
+                let decoded: Txu = Txu::try_from_slice(&packed_tx).unwrap();
 
-    //             let hash = decoded.hash;
-    //             println!(
-    //                 "🔢 tensor matmul complete! tx {:?}",
-    //                 bs58::encode(hash).into_string()
-    //             );
+                let hash = decoded.hash;
+                println!(
+                    "🔢 tensor matmul complete! tx {:?}",
+                    bs58::encode(hash).into_string()
+                );
 
-    //             TXPool::insert(packed_tx.clone());
-    //             NodeGen::broadcast(
-    //                 BroadcastKind::TxPool,
-    //                 "trainers",
-    //                 packed_tx,
-    //                 self.sender.clone(),
-    //             );
-    //         }
-    //     }
-    // }
+                TXPool::insert(packed_tx.clone());
+                NodeGen::broadcast(
+                    BroadcastKind::TxPool,
+                    "trainers",
+                    packed_tx,
+                    self.sender.clone(),
+                );
+            }
+        }
+    }
 
     pub async fn set_emission_address(to_address: &str) {
         // let sk = AMACONFIG.trainer_sk;

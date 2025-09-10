@@ -2,7 +2,7 @@ use rand::Rng;
 use std::net::IpAddr;
 use tokio::task;
 
-use crate::{NodePeers, node_proto::NodeProto};
+use crate::{node_proto::NodeProto, NodeANR, NodePeers};
 
 pub enum BroadcastKind {
     TxPool,
@@ -16,7 +16,7 @@ pub struct NodeGen {}
 
 impl NodeGen {
     pub fn init() {
-        
+
     }
 
     pub fn get_socket_gen() -> String {
