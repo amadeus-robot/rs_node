@@ -131,8 +131,6 @@ impl Consensus {
     }
 
     pub fn chain_tip_entry() -> Entry {
-        //  ADD GET FABRIC FROM DB
-
         Entry::unpack(None).unwrap()
     }
 

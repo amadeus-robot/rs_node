@@ -1,5 +1,7 @@
 use crate::*;
+use blst::min_pk::SecretKey;
 use once_cell::sync::Lazy;
+use rand::{RngCore, rngs::OsRng};
 use serde::Deserialize;
 use std::{net::Ipv4Addr, path::PathBuf};
 
@@ -23,7 +25,7 @@ pub struct SeedAnr {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AmaConfig {
-    pub version_3b: [u8; 3],
+    pub version: String,
     pub entry_size: usize,
     pub tx_size: usize,
     pub attestation_size: usize,
@@ -39,8 +41,8 @@ pub struct AmaConfig {
     pub othernodes: Vec<String>,
     pub trustfactor: f64,
 
-    pub trainer_sk: Vec<u8>,
-    // Optional flags
+    trainer_sk: Vec<u8>,
+
     pub archival_node: bool,
     pub autoupdate: bool,
     pub computor_type: ComputorType,
@@ -48,6 +50,43 @@ pub struct AmaConfig {
 }
 
 impl AmaConfig {
+    pub fn version_3b(&self) -> [u8; 3] {
+        let trimmed = self.version.trim_start_matches('v');
+
+        // split into parts
+        let parts: Vec<&str> = trimmed.split('.').collect();
+        assert!(parts.len() == 3, "version must be in vX.Y.Z format");
+
+        // parse into numbers
+        let v1: u8 = parts[0].parse().unwrap();
+        let v2: u8 = parts[1].parse().unwrap();
+        let v3: u8 = parts[2].parse().unwrap();
+
+        [v1, v2, v3]
+    }
+
+    pub fn trainer_sk(&self) -> [u8; 64] {
+        let sk_bytes = &self.trainer_sk;
+
+        if sk_bytes.len() == 32 {
+            if let Ok(_sk) = SecretKey::from_bytes(sk_bytes) {
+                // Return 64 bytes: duplicate the 32-byte key
+                let mut full_sk = [0u8; 64];
+                full_sk[..32].copy_from_slice(sk_bytes);
+                full_sk[32..].copy_from_slice(sk_bytes); // optional duplication
+                return full_sk;
+            }
+        }
+
+        // Fallback: generate 64 random bytes
+        let mut sk = [0u8; 64];
+        OsRng
+            .try_fill_bytes(&mut sk)
+            .expect("Failed to generate random bytes");
+        println!("Generated random 64 bytes: {:?}", sk);
+        sk
+    }
+
     pub fn trainer_pk(&self) -> Vec<u8> {
         BlsRs::get_public_key(&self.trainer_sk).unwrap()
     }
@@ -55,6 +94,10 @@ impl AmaConfig {
     pub fn trainer_pop(&self) -> Vec<u8> {
         BlsRs::sign(&self.trainer_sk, &self.trainer_pk(), BLS12AggSig::DST_POP).unwrap()
     }
+
+    //     if !Util.verify_time_sync() do
+    //     IO.puts "🔴 🕒 time not synced OR systemd-ntp client not found; DYOR 🔴"
+    // end
 }
 
 // pub AMACONFIG : AmaConfig= CONFIG.

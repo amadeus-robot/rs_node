@@ -120,7 +120,7 @@ impl ComputorGen {
             }
         } else {
             if let Some(sol) = UPOW::compute_for(epoch, &pk, &pop, &pk, &rand_bytes, 100) {
-                let sk = AMACONFIG.trainer_sk;
+                let sk = AMACONFIG.trainer_sk();
                 let packed_tx = TX::build(
                     &sk,
                     "Epoch",

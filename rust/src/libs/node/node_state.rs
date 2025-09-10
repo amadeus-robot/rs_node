@@ -6,8 +6,10 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver, unbounded_channel};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task;
+
+use crate::*;
 
 #[derive(Clone, Debug)]
 pub struct ANR {
@@ -27,12 +29,20 @@ pub trait NodeANRApi {
 
 pub struct NodeANR;
 impl NodeANRApi for NodeANR {
-    fn verify_and_unpack(_packed: &[u8]) -> Option<ANR> { None }
+    fn verify_and_unpack(_packed: &[u8]) -> Option<ANR> {
+        None
+    }
     fn insert(_anr: &ANR) {}
     fn set_handshaked(_pk: &[u8]) {}
-    fn handshaked_and_valid_ip4(_pk: &[u8], _ip: &str) -> bool { false }
-    fn get_random_verified(_n: usize) -> Vec<ANR> { vec![] }
-    fn get_shared_secret(_pk: &[u8], _sk: &[u8]) -> Vec<u8> { vec![] }
+    fn handshaked_and_valid_ip4(_pk: &[u8], _ip: &str) -> bool {
+        false
+    }
+    fn get_random_verified(_n: usize) -> Vec<ANR> {
+        vec![]
+    }
+    fn get_shared_secret(_pk: &[u8], _sk: &[u8]) -> Vec<u8> {
+        vec![]
+    }
 }
 
 #[derive(Clone)]
@@ -58,30 +68,115 @@ pub struct IState {
 // Define incoming message types (term)
 #[derive(Clone)]
 pub enum NodeMsg {
-    NewPhoneWhoDis { anr: Vec<u8>, challenge: i64 },
-    NewPhoneWhoDisNs { anr: Vec<u8> },
-    What { anr: Vec<u8>, signature: Vec<u8>, challenge: i64 },
-    WhatNs { anr: Vec<u8>, pk: Vec<u8> },
-    Ping { temporal: Vec<u8>, rooted: Vec<u8>, ts_m: i64 },
-    PingNs { temporal: Vec<u8>, rooted: Vec<u8>, ts_m: i64, has_permission_slip: bool },
-    Pong { ts_m: i64 },
-    PongNs { seen_time: i64, ts_m: i64 },
-    TxPool { txs_packed: Vec<Vec<u8>> },
-    PeersV2 { anrs: Vec<Vec<u8>> },
-    PeersV2Ns { anrs: Vec<ANR> },
-    Sol { sol: Vec<u8> },
-    Entry { entry_packed: Vec<u8>, consensus_packed: Option<Vec<u8>>, attestation_packed: Option<Vec<u8>>, ts_m: Option<i64> },
-    AttestationBulk { attestations_packed: Vec<Vec<u8>> },
-    ConsensusBulk { consensuses_packed: Vec<Vec<u8>> },
-    CatchupEntry { heights: Vec<u64> },
-    CatchupTri { heights: Vec<u64> },
-    CatchupBi { heights: Vec<u64> },
-    CatchupAttestation { hashes: Vec<Vec<u8>> },
-    SpecialBusiness { business_op: String, business_args: HashMap<String, Vec<u8>> },
-    SpecialBusinessReply { business_op: String, business_args: HashMap<String, Vec<u8>> },
-    SolicitEntry { hash: Vec<u8> },
-    SolicitEntry2,
-    Unknown,
+    NewPhoneWhoDis {
+        op: String,
+        anr: Vec<u8>,
+        challenge: i64,
+    },
+    NewPhoneWhoDisNs {
+        op: String,
+        anr: Vec<u8>,
+    },
+    What {
+        op: String,
+        anr: Vec<u8>,
+        signature: Vec<u8>,
+        challenge: i64,
+    },
+    WhatNs {
+        op: String,
+        anr: Vec<u8>,
+        pk: Vec<u8>,
+    },
+    Ping {
+        op: String,
+        temporal: Tip,
+        rooted: Tip,
+        ts_m: u128,
+    },
+    PingNs {
+        op: String,
+        temporal: Vec<u8>,
+        rooted: Vec<u8>,
+        ts_m: i64,
+        has_permission_slip: bool,
+    },
+    Pong {
+        op: String,
+        ts_m: u128,
+    },
+    PongNs {
+        op: String,
+        seen_time: i64,
+        ts_m: i64,
+    },
+    TxPool {
+        op: String,
+        txs_packed: Vec<Vec<u8>>,
+    },
+    PeersV2 {
+        op: String,
+        anrs: Vec<Vec<u8>>,
+    },
+    PeersV2Ns {
+        op: String,
+        anrs: Vec<ANR>,
+    },
+    Sol {
+        op: String,
+        sol: Vec<u8>,
+    },
+    Entry {
+        op: String,
+        entry_packed: Vec<u8>,
+        consensus_packed: Option<Vec<u8>>,
+        attestation_packed: Option<Vec<u8>>,
+        ts_m: Option<i64>,
+    },
+    AttestationBulk {
+        op: String,
+        attestations_packed: Vec<Vec<u8>>,
+    },
+    ConsensusBulk {
+        op: String,
+        consensuses_packed: Vec<Vec<u8>>,
+    },
+    CatchupEntry {
+        op: String,
+        heights: Vec<u64>,
+    },
+    CatchupTri {
+        op: String,
+        heights: Vec<u64>,
+    },
+    CatchupBi {
+        op: String,
+        heights: Vec<u64>,
+    },
+    CatchupAttestation {
+        op: String,
+        hashes: Vec<Vec<u8>>,
+    },
+    SpecialBusiness {
+        op: String,
+        business_op: String,
+        business_args: HashMap<String, Vec<u8>>,
+    },
+    SpecialBusinessReply {
+        op: String,
+        business_op: String,
+        business_args: HashMap<String, Vec<u8>>,
+    },
+    SolicitEntry {
+        op: String,
+        hash: Vec<u8>,
+    },
+    SolicitEntry2 {
+        op: String,
+    },
+    Unknown {
+        op: String,
+    },
 }
 
 // ---------- NodeState implementation ----------
@@ -107,10 +202,16 @@ impl NodeState {
     }
 
     fn now_secs() -> i64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
     }
     fn now_millis() -> i64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
     }
 
     // pub async fn handle(&self, tag: NodeMsg, istate: &mut IState) {
@@ -274,10 +375,15 @@ impl NodeState {
     //     }
     // }
 
-    async fn handle_sol(&self, istate: &IState, sol_packed: Vec<u8>) {
-    }
+    async fn handle_sol(&self, istate: &IState, sol_packed: Vec<u8>) {}
 
-    async fn handle_entry(&self, _istate: &IState, entry_packed: Vec<u8>, consensus_packed: Option<Vec<u8>>, attestation_packed: Option<Vec<u8>>) {
+    async fn handle_entry(
+        &self,
+        _istate: &IState,
+        entry_packed: Vec<u8>,
+        consensus_packed: Option<Vec<u8>>,
+        attestation_packed: Option<Vec<u8>>,
+    ) {
     }
 }
 

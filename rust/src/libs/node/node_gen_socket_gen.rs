@@ -64,7 +64,7 @@ impl NodeGenSocketGen {
                         if let Ok(parsed) = NodeProto::unpack_message_v2(&data) {
                             match parsed {
                                 NodeProtoMessage::SignatureV1 { pk, signature, payload, shard_total, version } => {
-                                    let valid = BlsEx::verify(&pk, &signature, &NodeProto::hash_payload(&pk, &payload));
+                                    let valid = BlsRs::verify(&pk, &signature, &NodeProto::hash_payload(&pk, &payload));
                                     if valid && NodeANR::handshaked_and_valid_ip4(&pk, &addr.ip().to_string()) {
                                         let msg = NodeProto::deflate_decompress(&payload);
                                         NodeState::handle(msg.op, Peer { ip: addr.ip().to_string(), signer: pk, version }, msg);

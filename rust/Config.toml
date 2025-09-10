@@ -4,7 +4,7 @@ truncate = -1
 
 [ama]
 # Application version
-version_3b = [1, 2, 3]       # major, minor, patch as u8 array
+version = "v1.2.3"       # major, minor, patch as u8 array
 
 # Sizes
 entry_size = 524288
